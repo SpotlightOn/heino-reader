@@ -37,6 +37,7 @@ from .files import is_supported_path, rejection_reason
 from .icons import APP_DIR, _icon
 from .layout import DOCUMENT_MARGIN
 from .qtview import QtMarkdownView
+from .render import preview_body_point_size
 from .settings import (
     LINE_NUMBERS_KEY,
     REMOTE_IMAGES_KEY,
@@ -936,7 +937,21 @@ class ViewerWindow(QMainWindow):
     def _set_scale(self, scale: float) -> None:
         self._scale = max(MIN_SCALE, min(MAX_SCALE, round(scale, 2)))
         self.viewer.set_zoom(self._scale)
+        self._apply_editor_font()
         self._zoom_label.setText(f"{round(self._scale * 100)}%")
+
+    def _apply_editor_font(self) -> None:
+        """Give the source pane the preview's text size, in its monospace font.
+
+        Both panes then read at the same size and follow Zoom together, which
+        keeps a split view from looking like two different applications while
+        scrolling.
+        """
+        if self._source is None:
+            return
+        self._source.set_text_point_size(
+            preview_body_point_size() * self._scale
+        )
 
     # --------------------------------------------------------- edit mode
 
@@ -959,6 +974,8 @@ class ViewerWindow(QMainWindow):
         self._splitter.insertWidget(0, source)
         self._source = source
         self._apply_line_numbers()
+        # Only now is the pane reachable for the shared text size.
+        self._apply_editor_font()
         return source
 
     @Slot(bool)

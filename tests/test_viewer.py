@@ -563,6 +563,40 @@ def test_zoom_indicator_updates(window):
     assert label.text() == "100%"
 
 
+def test_editor_text_matches_the_preview_size(qtbot, window):
+    """Both panes read at the same size; only the family differs."""
+    edit_action(window).trigger()
+    assert window._source.font().pointSizeF() == pytest.approx(
+        HeinoReader.preview_body_point_size()
+    )
+
+
+def test_zoom_scales_the_editor_text_too(qtbot, window):
+    edit_action(window).trigger()
+    window.zoom_in()
+    assert window._source.font().pointSizeF() == pytest.approx(
+        HeinoReader.preview_body_point_size() * 1.1
+    )
+
+
+def test_editor_keeps_its_monospace_family(qtbot, window):
+    from PySide6.QtGui import QFontDatabase
+
+    fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    edit_action(window).trigger()
+    window.zoom_in()
+    assert window._source.font().family() == fixed.family()
+
+
+def test_editor_tab_stop_follows_the_font(qtbot, window):
+    """The tab stop is a pixel distance, so it has to be recomputed."""
+    edit_action(window).trigger()
+    source = window._source
+    window.zoom_in()
+    expected = source.fontMetrics().horizontalAdvance(source.INDENT)
+    assert source.tabStopDistance() == expected
+
+
 def test_zoom_label_is_in_the_right_corner(window):
     from PySide6.QtCore import QPoint
 

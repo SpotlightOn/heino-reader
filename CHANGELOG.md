@@ -11,6 +11,7 @@
 ### Changed
 
 - Preview: debounced rendering, CSS line heights, lazy highlighting.
+- Editor: text size follows the preview and the zoom.
 
 ### Fixed
 

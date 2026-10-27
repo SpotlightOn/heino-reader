@@ -50,7 +50,9 @@ it. The window splits: markdown source on the left, live preview on the right.
   is already inside the block. A list started that way continues the one above
   it — indentation, bullet character and numbering included.
 - The source pane is a real code editor: markdown syntax highlighting, Tab /
-  Shift+Tab indent whole lines, and a bar marks block quotes.
+  Shift+Tab indent whole lines, and a bar marks block quotes. It uses the
+  preview's text size, only in a monospace font, so **Zoom** scales both panes
+  together.
 - Enter continues the block you are in: `> ` stays a quote, `- `, `* ` and
   `+ ` open the next bullet, `1. ` counts up and keeps its `.` or `)`
   delimiter. Nested markers and indentation are preserved. Enter on an item
