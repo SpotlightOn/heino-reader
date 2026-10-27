@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Heino Reader
+GenericName=Document Viewer
+Comment=A fast document viewer for markdown files
+Exec=heinoreader %f
+Icon=heinoreader
+Terminal=false
+StartupNotify=true
+StartupWMClass=heinoreader
+Categories=Office;TextEditor;Qt;
+Keywords=markdown;md;viewer;text;reader;
+MimeType=text/markdown;text/x-markdown;
