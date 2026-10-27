@@ -152,6 +152,77 @@ def test_list_ignores_blank_lines_when_numbering(doc):
     assert plain(doc) == "1. one\n\n2. two"
 
 
+# ------------------------------------------- block commands on an empty line
+
+
+def empty_line_cursor(document, text):
+    """Cursor at the end of a document, i.e. on a fresh empty line."""
+    document.setPlainText(text)
+    cursor = QTextCursor(document)
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    return cursor
+
+
+def test_bullet_list_on_an_empty_line_starts_the_list(doc):
+    cursor = empty_line_cursor(doc, "")
+    formatting.toggle_list(cursor)
+    assert plain(doc) == "- "
+    assert cursor.position() == 2
+
+
+def test_numbered_list_on_an_empty_line_starts_at_one(doc):
+    cursor = empty_line_cursor(doc, "")
+    formatting.toggle_list(cursor, ordered=True)
+    assert plain(doc) == "1. "
+    assert cursor.position() == 3
+
+
+def test_bullet_list_on_an_empty_line_continues_the_list_above(doc):
+    cursor = empty_line_cursor(doc, "- one\n")
+    formatting.toggle_list(cursor)
+    assert plain(doc) == "- one\n- "
+
+
+def test_numbered_list_on_an_empty_line_counts_up(doc):
+    cursor = empty_line_cursor(doc, "1. one\n2. two\n")
+    formatting.toggle_list(cursor, ordered=True)
+    assert plain(doc) == "1. one\n2. two\n3. "
+
+
+def test_nested_list_on_an_empty_line_keeps_indent_and_bullet(doc):
+    cursor = empty_line_cursor(doc, "  * nested\n")
+    formatting.toggle_list(cursor)
+    assert plain(doc) == "  * nested\n  * "
+
+
+def test_starting_a_list_twice_removes_the_marker(doc):
+    cursor = empty_line_cursor(doc, "- ")
+    formatting.toggle_list(cursor)
+    assert plain(doc) == ""
+    assert cursor.position() == 0
+
+
+def test_quote_on_an_empty_line_starts_a_quote(doc):
+    cursor = empty_line_cursor(doc, "")
+    formatting.toggle_quote(cursor)
+    assert plain(doc) == "> "
+    assert cursor.position() == 2
+
+
+def test_heading_on_an_empty_line_starts_a_heading(doc):
+    cursor = empty_line_cursor(doc, "")
+    formatting.set_heading(cursor, 3)
+    assert plain(doc) == "### "
+    assert cursor.position() == 4
+
+
+def test_starting_a_block_on_an_empty_line_is_one_undo_step(doc):
+    cursor = empty_line_cursor(doc, "text\n")
+    formatting.toggle_list(cursor, ordered=True)
+    doc.undo()
+    assert plain(doc) == "text\n"
+
+
 # ------------------------------------------------------------- toggle_quote
 
 def test_quote_adds_the_prefix(doc):

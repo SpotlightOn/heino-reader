@@ -16,7 +16,9 @@ body {
     padding: 16px 16px 48px;
     background: #ffffff;
     color: #1f2328;
-    font-family: "Noto Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+    /* A generic family: every platform resolves it without extra fonts. A
+       font chooser is planned. */
+    font-family: sans-serif;
     font-size: 16px;
     line-height: 1.55;
     overflow-wrap: break-word;

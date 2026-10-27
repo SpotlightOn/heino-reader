@@ -9,30 +9,19 @@ styling options are too limited for a faithful preview.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 
 from markdown_it import MarkdownIt
-from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import TextLexer, get_lexer_by_name
-from pygments.util import ClassNotFound
 
-# Pygments token colors for fenced code, kept in the same stylesheet.
-_CODE_STYLE = "friendly"
+from .highlighting import highlight_body
 
-_code_formatter = HtmlFormatter(nowrap=True, cssclass="codehilite", style=_CODE_STYLE)
 
 # CommonMark (the GitHub flavor for the tested constructs) plus tables.
 def _highlighted_fence(_renderer, tokens, index, options, env) -> str:
-    """Render a fenced code block with Pygments; unknown languages stay plain."""
-    token = tokens[index]
-    words = token.info.strip().split()
-    try:
-        lexer = get_lexer_by_name(words[0]) if words else TextLexer()
-    except ClassNotFound:
-        lexer = TextLexer()
-    body = highlight(token.content, lexer, _code_formatter).rstrip("\n")
+    """Render a fenced code block; unknown languages stay plain."""
+    body = highlight_body(tokens[index].content, tokens[index].info)
     return f'<pre class="codehilite"><code>{body}</code></pre>\n'
 
 
@@ -58,13 +47,7 @@ def _highlighted_fence_qt(_renderer, tokens, index, options, env) -> str:
     separate background for each, which shows up as one grey bar per line.
     A single block (``<br>``) keeps the background continuous.
     """
-    token = tokens[index]
-    words = token.info.strip().split()
-    try:
-        lexer = get_lexer_by_name(words[0]) if words else TextLexer()
-    except ClassNotFound:
-        lexer = TextLexer()
-    body = highlight(token.content, lexer, _code_formatter).rstrip("\n")
+    body = highlight_body(tokens[index].content, tokens[index].info)
     return _code_block_qt(body.replace("\n", "<br>"))
 
 
@@ -88,7 +71,7 @@ def _quote_close_qt(_renderer, tokens, index, options, env) -> str:
     return "</td></tr></table>\n"
 
 
-def _make_parser(qt: bool) -> MarkdownIt:
+def _make_parser(*, qt: bool) -> MarkdownIt:
     parser = MarkdownIt("commonmark", {"html": True}).enable("table")
     parser.add_render_rule(
         "fence", _highlighted_fence_qt if qt else _highlighted_fence
@@ -106,14 +89,153 @@ _qt_parser = _make_parser(qt=True)
 _CSS_PATH = Path(__file__).with_name("preview.css")
 PREVIEW_CSS = _CSS_PATH.read_text(encoding="utf-8")
 
+# One CSS pixel is 1/96 inch, one point is 1/72 inch.
+_CSS_PX_PER_PT = 96.0 / 72.0
 
-def markdown_to_html(text: str, qt: bool = False) -> str:
+# Used when the stylesheet declares no usable body size (or declares it in a
+# relative unit, which has no base to resolve against outside a browser).
+_FALLBACK_POINT_SIZE = 12.0
+
+_FONT_FAMILY_RE = re.compile(r"font-family\s*:\s*([^;]+);", re.IGNORECASE)
+_FONT_SIZE_RE = re.compile(r"font-size\s*:\s*([\d.]+)\s*(px|pt)\b", re.IGNORECASE)
+_LINE_HEIGHT_RE = re.compile(r"line-height\s*:\s*([\d.]+)\s*(%|px|pt)?", re.IGNORECASE)
+_CSS_RULE_RE = re.compile(r"([^{}]+)\{([^}]*)\}")
+
+_HEADING_SELECTORS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+
+
+@lru_cache(maxsize=8)
+def _declarations(css: str, selectors: frozenset[str]) -> str:
+    """All declarations of every rule whose selector list names one of them.
+
+    Rules are merged in file order, so a later declaration wins — the same way
+    a browser would apply them. ``preview.css`` opens with
+    ``html, body { margin: 0; padding: 0 }`` before the real body rule, and
+    both have to be taken into account.
+
+    Cached: the stylesheet is a module constant, yet these helpers are called
+    several times per render and per zoom step.
+    """
+    blocks = [
+        declarations
+        for selector_list, declarations in _CSS_RULE_RE.findall(css)
+        if any(
+            selector.strip().lower() in selectors
+            for selector in selector_list.split(",")
+        )
+    ]
+    return "\n".join(blocks)
+
+
+def preview_font_families(css: str | None = None) -> list[str]:
+    """Font families of the preview theme, in fallback order."""
+    block = _declarations(PREVIEW_CSS if css is None else css, frozenset({"body"}))
+    match = _FONT_FAMILY_RE.search(block)
+    if match is None:
+        return []
+    families = (part.strip().strip("\"'") for part in match.group(1).split(","))
+    return [family for family in families if family]
+
+
+def preview_body_point_size(css: str | None = None) -> float:
+    """Body font size of the preview theme, in points.
+
+    Qt sizes fonts in points and scales them with the screen DPI, while CSS
+    pixel sizes are not DPI aware inside ``QTextDocument``. The stylesheet
+    therefore keeps its px declarations for the WebEngine backend, and only
+    the Qt backend converts the body size once: Qt does the rest.
+    """
+    block = _declarations(PREVIEW_CSS if css is None else css, frozenset({"body"}))
+    match = _FONT_SIZE_RE.search(block)
+    if match is None:
+        return _FALLBACK_POINT_SIZE
+    value, unit = float(match.group(1)), match.group(2).lower()
+    if unit == "pt":
+        return value
+    return value / _CSS_PX_PER_PT
+
+
+def preview_line_height(*, heading: bool = False, css: str | None = None) -> float | None:
+    """CSS ``line-height`` of headings or body text, as a factor.
+
+    CSS multiplies the font size (``1.55`` = 1.55 × font size); Qt reads the
+    same number as a percentage of the font's natural line height. The factor
+    returned here is the CSS meaning, the Qt backend converts it. ``None``
+    means the stylesheet does not declare one.
+    """
+    selectors = _HEADING_SELECTORS if heading else frozenset({"body"})
+    block = _declarations(PREVIEW_CSS if css is None else css, selectors)
+    match = _LINE_HEIGHT_RE.search(block)
+    if match is None:
+        return None
+    value, unit = float(match.group(1)), (match.group(2) or "").lower()
+    if unit == "%":
+        return value / 100.0
+    if unit:
+        # A fixed length (px/pt) does not scale with the font; unsupported.
+        return None
+    return value
+
+
+def markdown_to_html(text: str, *, qt: bool = False) -> str:
     """Render a markdown document to an HTML fragment.
 
     ``qt=True`` produces markup for the QTextEdit backend (code lines joined
     with ``<br>`` so backgrounds stay continuous).
     """
     return (_qt_parser if qt else _parser).render(text)
+
+
+# A line-height declaration with its value and optional unit.
+_LINE_HEIGHT_DECL_RE = re.compile(
+    r"(?<![\w-])(line-height\s*:\s*)([\d.]+)\s*(%|px|pt)?", re.IGNORECASE
+)
+
+# Block elements whose line height has to come from an explicit rule: Qt's
+# setHtml() parses a fragment without <body>, so the body rule never matches.
+_BODY_BLOCK_SELECTORS = "p, li, dd, dt, td, th, blockquote"
+
+
+def _qt_percent(value: float, unit: str, pixel_per_natural: float) -> float:
+    """CSS line-height value as the percentage Qt expects for it.
+
+    Qt reads the number as a percentage of the font's natural line height,
+    CSS as a multiple of the font size, so the two differ by the font's
+    natural height per pixel.
+    """
+    factor = value / 100.0 if unit == "%" else value
+    return factor * pixel_per_natural * 100.0
+
+
+def qt_stylesheet(css: str | None = None, pixel_per_natural: float = 1.0) -> str:
+    """The preview stylesheet with line heights Qt can use as they are.
+
+    ``preview.css`` states line heights the CSS way (``1.55``, ``125%``). Qt
+    parses the same number as a share of the font's natural line height and
+    would render the text far too tight, so every declaration is rewritten as
+    the equivalent percentage. Fixed lengths (``px``, ``pt``) do not scale
+    with the font size and are left alone.
+
+    Because a ``body`` rule never matches in a fragment, the body line height
+    is additionally spelled out on the block elements. ``pixel_per_natural``
+    comes from the document font: ``QFontInfo.pixelSize() /
+    QFontMetricsF.height()``.
+    """
+    sheet = PREVIEW_CSS if css is None else css
+
+    def rewrite(match: re.Match[str]) -> str:
+        unit = (match.group(3) or "").lower()
+        if unit in {"px", "pt"}:
+            return match.group(0)
+        percent = _qt_percent(float(match.group(2)), unit, pixel_per_natural)
+        return f"{match.group(1)}{percent:.2f}%"
+
+    corrected = _LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)
+    body = preview_line_height(css=sheet)
+    if body is None:
+        return corrected
+    percent = _qt_percent(body, "", pixel_per_natural)
+    return f"{corrected}\n{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}"
 
 
 def render_html_document(text: str) -> str:

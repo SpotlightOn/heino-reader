@@ -13,18 +13,43 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import (
+    QFont,
+    QFontInfo,
+    QFontMetricsF,
     QImage,
     QPixmap,
     QTextCursor,
     QTextDocument,
     QTextImageFormat,
 )
-from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
+from PySide6.QtWidgets import QTextEdit, QWidget
 
 from .images import RemoteImageLoader, is_remote, placeholder_image
 from .layout import content_layout
-from .render import PREVIEW_CSS, _resolve_relative_paths, markdown_to_html
+from .render import (
+    _resolve_relative_paths,
+    markdown_to_html,
+    preview_body_point_size,
+    preview_font_families,
+    qt_stylesheet,
+)
 from .utils import open_external
+
+
+def preview_font(scale: float = 1.0) -> QFont:
+    """The document font for the preview at the given zoom level.
+
+    A point size, not a pixel size: Qt scales points with the screen DPI, so
+    the preview follows the desktop like every other Qt widget. Heading and
+    inline sizes are left to Qt's own HTML scale, which is relative to this
+    font and therefore scales with it.
+    """
+    font = QFont()
+    families = preview_font_families()
+    if families:
+        font.setFamilies(families)
+    font.setPointSizeF(preview_body_point_size() * scale)
+    return font
 
 
 class QtMarkdownView(QTextEdit):
@@ -41,13 +66,19 @@ class QtMarkdownView(QTextEdit):
         self._has_images = False
         self._fit_width = -1
         self._scale = 1.0
-        base_size = QApplication.font().pointSizeF()
-        self._base_point_size = base_size if base_size > 0 else 11.0
         self._remote_enabled = True
         self._remote = RemoteImageLoader(self)
         self._remote.loaded.connect(self._on_remote_loaded)
         self._remote.failed.connect(self._on_remote_failed)
-        self.document().setDefaultStyleSheet(PREVIEW_CSS)
+        # preview.css styles colors, spacing and structure. Its typography
+        # cannot come from a body rule here: setDefaultStyleSheet() never
+        # matches one, because setHtml() parses a fragment without <body>.
+        # The base font is therefore the document font, the line heights are
+        # re-referenced to Qt's own metrics by qt_stylesheet(), and the
+        # relative heading sizes are Qt's own HTML scale.
+        self.setFont(preview_font(self._scale))
+        self.document().setDefaultFont(preview_font(self._scale))
+        self._apply_stylesheet()
 
     # --------------------------------------------------------------- API
 
@@ -74,14 +105,29 @@ class QtMarkdownView(QTextEdit):
         self._apply_remote_images()
         self._fit_images()
 
+    def _apply_stylesheet(self) -> None:
+        """Hand Qt the stylesheet with line heights it can apply directly.
+
+        The correction depends on the document font, so it runs again whenever
+        that font changes (zoom).
+        """
+        font = self.document().defaultFont()
+        natural = QFontMetricsF(font).height()
+        pixel = QFontInfo(font).pixelSize()
+        factor = pixel / natural if natural > 0 and pixel > 0 else 1.0
+        self.document().setDefaultStyleSheet(
+            qt_stylesheet(pixel_per_natural=factor)
+        )
+
     def set_remote_images_enabled(self, enabled: bool) -> None:
         self._remote_enabled = enabled
 
     def set_zoom(self, scale: float) -> None:
         self._scale = scale
-        font = QApplication.font()
-        font.setPointSizeF(self._base_point_size * scale)
+        font = preview_font(scale)
         self.setFont(font)
+        self.document().setDefaultFont(font)
+        self._apply_stylesheet()
         self._refit()
 
     # ------------------------------------------------------------ layout
@@ -111,6 +157,8 @@ class QtMarkdownView(QTextEdit):
 
     def _apply_remote_images(self) -> None:
         """Attach cached, placeholder or in-flight resources for remote images."""
+        if not self._has_images:
+            return
         document = self.document()
         block = document.begin()
         while block.isValid():

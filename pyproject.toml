@@ -1,13 +1,13 @@
 [project]
 name = "heino-reader"
-version = "0.2.1"
+version = "0.2.2"
 description = "A fast document viewer for markdown files, built with PySide6"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-# shields.io derives the "python versions" badge from these classifiers,
-# not from requires-python; without them the badge renders "missing".
+# PyPI and its consumers read the supported interpreters from these
+# classifiers, not from requires-python.
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: X11 Applications :: Qt",
@@ -18,6 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Text Processing :: Markup",
 ]
 # Only the Qt base modules are required: QtCore, QtGui, QtWidgets, QtSvg and

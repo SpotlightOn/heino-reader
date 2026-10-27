@@ -15,6 +15,10 @@ HEADING_RE = re.compile(r"^(#{1,6}) ")
 BULLET_RE = re.compile(r"^[-*+] ")
 NUMBERED_RE = re.compile(r"^\d+[.)] ")
 QUOTE_RE = re.compile(r"^>\s?")
+# An existing list item, with its indentation, for continuing a list.
+_ITEM_RE = re.compile(
+    r"^(\s*)(?:(?P<bullet>[-*+])|(?P<number>\d+)(?P<delimiter>[.)]))\s+"
+)
 
 
 def selected_blocks(cursor: QTextCursor) -> list:
@@ -119,6 +123,51 @@ def toggle_wrap(cursor: QTextCursor, marker: str, closing: str | None = None) ->
     cursor.endEditBlock()
 
 
+def _blank_block(cursor: QTextCursor):
+    """The single, empty block the cursor sits in, or None.
+
+    A block command on an empty line starts a new block (list, quote,
+    heading) instead of doing nothing, so the marker has to be inserted
+    even though there is no text to wrap.
+    """
+    blocks = selected_blocks(cursor)
+    if len(blocks) == 1 and not blocks[0].text().strip():
+        return blocks[0]
+    return None
+
+
+def _start_block(cursor: QTextCursor, marker: str) -> bool:
+    """Insert ``marker`` on an empty line and place the cursor behind it."""
+    block = _blank_block(cursor)
+    if block is None:
+        return False
+    _replace_block(block, marker)
+    cursor.setPosition(block.position() + len(marker))
+    return True
+
+
+def new_item_marker(block, ordered: bool = False) -> str:
+    """Marker for a new item on an empty line, continuing the list above.
+
+    Reusing the indentation and the bullet character keeps nested lists
+    nested; a numbered list counts up from the item right above, so the
+    source reads in sequence and the next Enter continues that number.
+    """
+    previous = block.previous()
+    while previous.isValid() and not previous.text().strip():
+        previous = previous.previous()
+    if previous.isValid():
+        match = _ITEM_RE.match(previous.text())
+        if match is not None:
+            indent = match.group(1)
+            if ordered and match.group("number"):
+                number = int(match.group("number")) + 1
+                return f"{indent}{number}{match.group('delimiter')} "
+            if not ordered and match.group("bullet"):
+                return f"{indent}{match.group('bullet')} "
+    return "1. " if ordered else "- "
+
+
 def set_heading(cursor: QTextCursor, level: int) -> None:
     """Set the selected lines to heading level 1-6 (0 = plain paragraph).
 
@@ -127,6 +176,11 @@ def set_heading(cursor: QTextCursor, level: int) -> None:
     """
     blocks = selected_blocks(cursor)
     texts = [block.text() for block in blocks]
+
+    if _blank_block(cursor) is not None:
+        # Starting a block from scratch: the marker goes onto the empty line.
+        _start_block(cursor, f"{'#' * level} " if level else "")
+        return
 
     if level:
         content = [text for text in texts if text.strip()]
@@ -137,7 +191,7 @@ def set_heading(cursor: QTextCursor, level: int) -> None:
             level = 0  # everything is already at this level: toggle off
 
     cursor.beginEditBlock()
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         plain = HEADING_RE.sub("", text, count=1)
@@ -157,12 +211,19 @@ def toggle_list(cursor: QTextCursor, ordered: bool = False) -> None:
     other = BULLET_RE if ordered else NUMBERED_RE
     blocks = selected_blocks(cursor)
     texts = [block.text() for block in blocks]
+
+    blank = _blank_block(cursor)
+    if blank is not None:
+        # No text yet: start the item here, the cursor goes behind the marker.
+        _start_block(cursor, new_item_marker(blank, ordered))
+        return
+
     content = [text for text in texts if text.strip()]
     removing = bool(content) and all(pattern.match(text) for text in content)
 
     cursor.beginEditBlock()
     index = 0
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         index += 1
@@ -180,13 +241,17 @@ def toggle_list(cursor: QTextCursor, ordered: bool = False) -> None:
 
 def toggle_quote(cursor: QTextCursor) -> None:
     """Toggle a "> " block quote prefix on the selected lines."""
+    if _start_block(cursor, "> "):
+        # An empty line: the quote starts here.
+        return
+
     blocks = selected_blocks(cursor)
     texts = [block.text() for block in blocks]
     content = [text for text in texts if text.strip()]
     removing = bool(content) and all(QUOTE_RE.match(text) for text in content)
 
     cursor.beginEditBlock()
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         if removing:

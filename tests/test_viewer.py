@@ -207,6 +207,92 @@ def test_save_stays_disabled_without_a_file(qtbot):
     assert not menu_action(window, "File", "Save").isEnabled()
 
 
+# ------------------------------------------------------- unsaved changes
+
+
+def _edit_buffer(window, text):
+    """Append text to the source buffer as one undoable change."""
+    edit_action(window).trigger()
+    cursor = window._source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText(text)
+
+
+def test_closing_with_unsaved_changes_asks_first(qtbot, window, monkeypatch):
+    _edit_buffer(window, " not saved")
+    asked = []
+    monkeypatch.setattr(
+        HeinoReader.window,
+        "ask_discard_changes",
+        lambda parent, name: asked.append(name) or "cancel",
+    )
+
+    window.close()
+
+    assert asked == ["notes.md"]
+    assert window.isVisible(), "cancel must keep the window open"
+    assert window.isWindowModified()
+
+
+def test_closing_saves_when_the_user_asks(qtbot, window, md_file, monkeypatch):
+    _edit_buffer(window, " kept")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "save"
+    )
+
+    window.close()
+
+    assert "kept" in md_file.read_text(encoding="utf-8")
+    assert not window.isVisible()
+
+
+def test_closing_discards_when_the_user_asks(qtbot, window, md_file, monkeypatch):
+    before = md_file.read_text(encoding="utf-8")
+    _edit_buffer(window, " dropped")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "discard"
+    )
+
+    window.close()
+
+    assert md_file.read_text(encoding="utf-8") == before
+    assert not window.isVisible()
+
+
+def test_clean_window_closes_without_asking(qtbot, window, monkeypatch):
+    def refuse(*args):
+        raise AssertionError("no prompt expected for an unmodified document")
+
+    monkeypatch.setattr(HeinoReader.window, "ask_discard_changes", refuse)
+    window.close()
+    assert not window.isVisible()
+
+
+def test_opening_another_file_asks_about_unsaved_changes(
+    qtbot, window, md_file, monkeypatch
+):
+    _edit_buffer(window, " unsaved")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "cancel"
+    )
+
+    assert not window.open(md_file.parent / "other.md")
+    assert window._path == md_file
+    assert "unsaved" in window._source.toPlainText()
+
+
+def test_title_marks_unsaved_changes(qtbot, window, monkeypatch):
+    assert not window.isWindowModified()
+    _edit_buffer(window, " dirty")
+    assert window.isWindowModified()
+
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_save_file", lambda parent, start: None
+    )
+    menu_action(window, "File", "Save").trigger()
+    assert not window.isWindowModified()
+
+
 def test_close_menu_item_closes_window(window):
     menu_action(window, "File", "Close").trigger()
     assert not window.isVisible()
@@ -370,6 +456,100 @@ def test_edit_mode_updates_preview_live(qtbot, window):
     assert window._markdown == window._source.toPlainText()
 
 
+def test_edit_mode_renders_after_the_typing_pause(qtbot, window):
+    """The preview is debounced, not dropped: it catches up when typing stops."""
+    edit_action(window).trigger()
+    qtbot.keyClicks(window._source, "# Fresh Heading")
+    qtbot.waitUntil(lambda: "Fresh Heading" in preview_text(window), timeout=3000)
+
+
+def test_leaving_edit_mode_renders_pending_edits_at_once(qtbot, window):
+    edit_action(window).trigger()
+    qtbot.keyClicks(window._source, "# Fresh Heading")
+    assert window._render_timer.isActive()
+    edit_action(window).trigger()  # back to the full-width preview
+    assert "Fresh Heading" in preview_text(window)
+
+
+# ------------------------------------------------------------- undo and redo
+
+
+def test_undo_and_redo_lead_the_format_toolbar(window):
+    edit_action(window).trigger()
+    actions = format_toolbar(window).actions()
+    assert [action.text() for action in actions[:2]] == ["Undo", "Redo"]
+    assert actions[2].isSeparator(), "the history is set off from formatting"
+    texts = [action.text() for action in actions]
+    assert texts.index("Bold") > texts.index("Redo")
+    assert actions[0].shortcut().toString() == "Ctrl+Z"
+    assert "Ctrl+Y" in [key.toString() for key in actions[1].shortcuts()]
+
+
+def test_undo_and_redo_are_disabled_outside_edit_mode(window):
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+
+def test_undo_and_redo_follow_the_editor_history(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    original = source.toPlainText()
+    assert not window._undo_action.isEnabled()
+
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText(" appended")
+    assert window._undo_action.isEnabled()
+
+    window._undo_action.trigger()
+    assert source.toPlainText() == original
+    assert window._redo_action.isEnabled()
+
+    window._redo_action.trigger()
+    assert source.toPlainText() == original + " appended"
+
+
+def test_a_new_change_after_undo_clears_redo(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("one")
+    window._undo_action.trigger()
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("two")
+    assert not window._redo_action.isEnabled()
+
+
+def test_formatting_is_one_undo_step(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    source.setPlainText("Title")
+    _select(source, 0, 5)
+    qtbot.keyClick(source, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
+    assert source.toPlainText() == "# Title"
+
+    window._undo_action.trigger()
+    assert source.toPlainText() == "Title"
+
+
+def test_opening_another_file_clears_the_history(qtbot, window, tmp_path):
+    """The same text in another file must not undo into the previous one."""
+    edit_action(window).trigger()
+    cursor = window._source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("more")
+    assert window._undo_action.isEnabled()
+
+    other = tmp_path / "other.md"
+    other.write_text(window._source.toPlainText(), encoding="utf-8")
+    window.open(other)
+
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+
 def test_zoom_indicator_updates(window):
     labels = window.findChildren(QLabel)
     assert len(labels) == 1
@@ -381,6 +561,40 @@ def test_zoom_indicator_updates(window):
     window.zoom_out()
     window.zoom_out()
     assert label.text() == "100%"
+
+
+def test_editor_text_matches_the_preview_size(qtbot, window):
+    """Both panes read at the same size; only the family differs."""
+    edit_action(window).trigger()
+    assert window._source.font().pointSizeF() == pytest.approx(
+        HeinoReader.preview_body_point_size()
+    )
+
+
+def test_zoom_scales_the_editor_text_too(qtbot, window):
+    edit_action(window).trigger()
+    window.zoom_in()
+    assert window._source.font().pointSizeF() == pytest.approx(
+        HeinoReader.preview_body_point_size() * 1.1
+    )
+
+
+def test_editor_keeps_its_monospace_family(qtbot, window):
+    from PySide6.QtGui import QFontDatabase
+
+    fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+    edit_action(window).trigger()
+    window.zoom_in()
+    assert window._source.font().family() == fixed.family()
+
+
+def test_editor_tab_stop_follows_the_font(qtbot, window):
+    """The tab stop is a pixel distance, so it has to be recomputed."""
+    edit_action(window).trigger()
+    source = window._source
+    window.zoom_in()
+    expected = source.fontMetrics().horizontalAdvance(source.INDENT)
+    assert source.tabStopDistance() == expected
 
 
 def test_zoom_label_is_in_the_right_corner(window):
@@ -672,8 +886,8 @@ def test_format_toolbar_buttons_have_icons_and_tooltips(window):
         for action in format_toolbar(window).actions()
         if not action.isSeparator() and not isinstance(action, QWidgetAction)
     ]
-    assert len(buttons) == 11, (
-        "bold..code, quote, bullet, numbered, link, image, table"
+    assert len(buttons) == 13, (
+        "undo, redo, bold..code, quote, bullet, numbered, link, image, table"
     )
     assert all(not action.icon().isNull() for action in buttons)
     assert all("(" in action.toolTip() for action in buttons), (

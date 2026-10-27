@@ -6,8 +6,9 @@ import os
 import sys
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Literal
 
-from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, Slot
+from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,6 +37,7 @@ from .files import is_supported_path, rejection_reason
 from .icons import APP_DIR, _icon
 from .layout import DOCUMENT_MARGIN
 from .qtview import QtMarkdownView
+from .render import preview_body_point_size
 from .settings import (
     LINE_NUMBERS_KEY,
     REMOTE_IMAGES_KEY,
@@ -70,8 +72,13 @@ TOOLBAR_STYLE = """
 # screen width. Leaving edit mode restores the previous size.
 EDIT_MODE_WIDTH = 1200
 
+# Wait this long after the last keystroke before the preview re-renders.
+# One render per short note is cheap, but a long document costs real time and
+# typing does not need a fresh preview per character.
+LIVE_PREVIEW_DELAY_MS = 200
+
 # Keep in sync with pyproject.toml.
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 ABOUT_TEXT = (
     f"<b>Heino Reader {VERSION}</b>"
@@ -139,6 +146,34 @@ def show_about(parent: QWidget) -> None:
     QMessageBox.about(parent, "About Heino Reader", ABOUT_TEXT)
 
 
+def ask_discard_changes(
+    parent: QWidget, name: str
+) -> Literal["save", "discard", "cancel"]:
+    """Ask what to do with unsaved edits before they would be lost.
+
+    Returns which button the user picked; "cancel" means keep everything as
+    it is. A separate function, so the window does not have to own a dialog
+    and tests can stand in for the answer.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Unsaved changes")
+    box.setText(f"{name} has unsaved changes.")
+    box.setInformativeText("Save them before they are lost?")
+    save = box.addButton("&Save", QMessageBox.ButtonRole.AcceptRole)
+    discard = box.addButton("&Discard", QMessageBox.ButtonRole.DestructiveRole)
+    cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(save)
+    box.setEscapeButton(cancel)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is save:
+        return "save"
+    if clicked is discard:
+        return "discard"
+    return "cancel"
+
+
 # Preview backends. The Qt text renderer is the default: it starts
 # instantly and needs no Chromium process. The WebEngine backend is a
 # deliberate opt-in (View menu or --renderer web) and is imported lazily.
@@ -202,6 +237,9 @@ class ViewerWindow(QMainWindow):
         self._renderer = chosen if chosen in RENDERERS else DEFAULT_RENDERER
         self._markdown = PLACEHOLDER_MD
         self._path: Path | None = None
+        # The text the file on disk has, to tell unsaved changes from a
+        # buffer that was merely reverted with undo.
+        self._saved_text = PLACEHOLDER_MD
         # Geometry to restore when leaving edit mode (None = never widened).
         self._pre_edit_geometry: QRect | None = None
         base_size = QApplication.font().pointSizeF()
@@ -228,6 +266,12 @@ class ViewerWindow(QMainWindow):
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._on_file_changed)
 
+        # The live preview is debounced; see _source_edited.
+        self._render_timer = QTimer(self)
+        self._render_timer.setSingleShot(True)
+        self._render_timer.setInterval(LIVE_PREVIEW_DELAY_MS)
+        self._render_timer.timeout.connect(self._render)
+
         self.setAcceptDrops(True)
         self.resize(800, 900)
 
@@ -239,7 +283,7 @@ class ViewerWindow(QMainWindow):
         if path is not None:
             self.open(path)
         else:
-            self.setWindowTitle("Heino Reader")
+            self.setWindowTitle("Heino Reader[*]")
             self._render()
 
     # ------------------------------------------------------------------ UI
@@ -303,6 +347,34 @@ class ViewerWindow(QMainWindow):
     def _build_format_actions(self) -> None:
         """Create the markdown formatting actions (menu + format toolbar)."""
         self._format_actions: list[QAction] = []
+
+        # Undo and Redo start the format toolbar, but are not formatting
+        # actions: they follow the editor's history instead of edit mode.
+        self._undo_action = QAction(
+            _icon("undo", ["edit-undo"], glyph="\N{ANTICLOCKWISE OPEN CIRCLE ARROW}"),
+            "Undo",
+            self,
+        )
+        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo_action.setToolTip("Undo (Ctrl+Z)")
+        self._undo_action.setEnabled(False)
+        self._undo_action.triggered.connect(self._undo)
+
+        self._redo_action = QAction(
+            _icon("redo", ["edit-redo"], glyph="\N{CLOCKWISE OPEN CIRCLE ARROW}"),
+            "Redo",
+            self,
+        )
+        # Ctrl+Y on top of the platform shortcut, which is Ctrl+Shift+Z.
+        self._redo_action.setShortcuts(
+            [
+                QKeySequence(QKeySequence.StandardKey.Redo),
+                QKeySequence("Ctrl+Y"),
+            ]
+        )
+        self._redo_action.setToolTip("Redo (Ctrl+Shift+Z, Ctrl+Y)")
+        self._redo_action.setEnabled(False)
+        self._redo_action.triggered.connect(self._redo)
 
         def add(text, icon_name, theme_names, shortcut, func, *args, glyph=""):
             action = QAction(_icon(icon_name, theme_names, glyph=glyph), text, self)
@@ -495,38 +567,48 @@ class ViewerWindow(QMainWindow):
             self.open(path)
 
     @Slot()
-    def _save(self) -> None:
-        """Write the edit buffer back to the markdown file."""
-        if self._path is None or self._source is None:
-            return
-        self._write(self._path)
+    def _save(self) -> bool:
+        """Write the edit buffer to the file; False when nothing was written.
+
+        Without a file yet (the placeholder document), saving asks where to
+        put it — the same path the close prompt takes.
+        """
+        if self._source is None:
+            return False
+        if self._path is None:
+            return self._save_as()
+        return self._write(self._path)
 
     @Slot()
-    def _save_as(self) -> None:
+    def _save_as(self) -> bool:
         """Write the edit buffer to the chosen file and keep editing it."""
         if self._source is None:
-            return
+            return False
         if self._path is not None:
             start = str(self._path)
         else:
             start = str(Path.home() / "untitled.md")
         path = ask_save_file(self, start)
         if path is None:
-            return
+            return False
         if path == self._path:
-            self._write(path)
-            return
-        if self._write(path):
-            self._adopt_path(path)
-            self._render()
+            return self._write(path)
+        if not self._write(path):
+            return False
+        self._adopt_path(path)
+        self._render_now()
+        return True
 
     def _write(self, path: Path) -> bool:
         """Write the edit buffer to ``path``; False when that fails."""
+        text = self._source.toPlainText()
         try:
-            path.write_text(self._source.toPlainText(), encoding="utf-8")
+            path.write_text(text, encoding="utf-8")
         except OSError as error:
             print(f"heino-reader: cannot save {path}: {error}", file=sys.stderr)
             return False
+        self._saved_text = text
+        self._update_modified_state()
         return True
 
     def _adopt_path(self, path: Path) -> None:
@@ -537,19 +619,72 @@ class ViewerWindow(QMainWindow):
         if watched:
             self._watcher.removePaths(watched)
         self._watcher.addPath(str(path))
-        self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader")
-        self._update_save_action()
+        self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader[*]")
+        self._update_modified_state()
+        self._update_edit_actions()
 
-    def _update_save_action(self) -> None:
-        """Saving is available only while editing."""
+    def _is_modified(self) -> bool:
+        """True while the buffer holds text the file on disk does not have.
+
+        Comparing the text instead of latching a flag means undoing back to
+        the saved state counts as clean again.
+        """
+        if self._source is None:
+            return False
+        return self._source.toPlainText() != self._saved_text
+
+    def _update_modified_state(self) -> None:
+        """Show unsaved changes in the title, the way Qt windows do."""
+        self.setWindowModified(self._is_modified())
+
+    def _confirm_discard(self) -> bool:
+        """True when the buffer may go, asking about unsaved changes first.
+
+        Guards everything that throws the buffer away: closing the window,
+        opening another file, dropping a file onto the window.
+        """
+        if not self._is_modified():
+            return True
+        name = self._path.name if self._path is not None else "This document"
+        choice = ask_discard_changes(self, name)
+        if choice == "discard":
+            return True
+        if choice == "save":
+            return self._save()
+        return False
+
+    def _update_edit_actions(self) -> None:
+        """Match saving, undo/redo and formatting to the current mode.
+
+        All of it needs the source editor, so all of it follows edit mode.
+        """
         editing = self._edit_action.isChecked()
         self._save_action.setEnabled(editing and self._path is not None)
         self._save_as_action.setEnabled(editing)
+        document = self._source.document() if self._source is not None else None
+        self._undo_action.setEnabled(
+            editing and document is not None and document.isUndoAvailable()
+        )
+        self._redo_action.setEnabled(
+            editing and document is not None and document.isRedoAvailable()
+        )
         # Formatting only makes sense while editing, so the format toolbar
         # appears with edit mode and its actions become enabled.
         self._format_toolbar.setVisible(editing)
         for action in self._format_actions:
             action.setEnabled(editing)
+
+    @Slot()
+    def _undo(self) -> None:
+        """Undo the last change in the source editor."""
+        if self._source is not None:
+            self._source.undo()
+
+    @Slot()
+    def _redo(self) -> None:
+        """Redo the last undone change in the source editor."""
+        if self._source is not None:
+            self._source.redo()
 
     @Slot()
     def _about(self) -> None:
@@ -579,7 +714,7 @@ class ViewerWindow(QMainWindow):
         """Allow or forbid downloading remote images, then re-render."""
         self.viewer.set_remote_images_enabled(enabled)
         self._settings.set_bool(REMOTE_IMAGES_KEY, enabled)
-        self._render()
+        self._render_now()
 
     @Slot(bool)
     def _set_web_preview(self, enabled: bool) -> None:
@@ -626,7 +761,7 @@ class ViewerWindow(QMainWindow):
         self._web_preview_action.blockSignals(True)
         self._web_preview_action.setChecked(kind == RENDERER_WEB)
         self._web_preview_action.blockSignals(False)
-        self._render()
+        self._render_now()
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar(self)
@@ -733,6 +868,10 @@ class ViewerWindow(QMainWindow):
         self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
+        toolbar.addAction(self._undo_action)
+        toolbar.addAction(self._redo_action)
+        toolbar.addSeparator()
+
         for action in (
             self._bold_action,
             self._italic_action,
@@ -798,7 +937,21 @@ class ViewerWindow(QMainWindow):
     def _set_scale(self, scale: float) -> None:
         self._scale = max(MIN_SCALE, min(MAX_SCALE, round(scale, 2)))
         self.viewer.set_zoom(self._scale)
+        self._apply_editor_font()
         self._zoom_label.setText(f"{round(self._scale * 100)}%")
+
+    def _apply_editor_font(self) -> None:
+        """Give the source pane the preview's text size, in its monospace font.
+
+        Both panes then read at the same size and follow Zoom together, which
+        keeps a split view from looking like two different applications while
+        scrolling.
+        """
+        if self._source is None:
+            return
+        self._source.set_text_point_size(
+            preview_body_point_size() * self._scale
+        )
 
     # --------------------------------------------------------- edit mode
 
@@ -812,12 +965,17 @@ class ViewerWindow(QMainWindow):
         )
         source.document().setDocumentMargin(DOCUMENT_MARGIN)
         source.textChanged.connect(self._source_edited)
+        # Undo/redo actions follow the editor's history instead of guessing.
+        source.undoAvailable.connect(self._update_edit_actions)
+        source.redoAvailable.connect(self._update_edit_actions)
         # Line numbers are optional; the gutter is created with the editor
         # and attached only if the View menu asks for it.
         self._line_numbers = LineNumberGutter(source)
         self._splitter.insertWidget(0, source)
         self._source = source
         self._apply_line_numbers()
+        # Only now is the pane reachable for the shared text size.
+        self._apply_editor_font()
         return source
 
     @Slot(bool)
@@ -838,7 +996,10 @@ class ViewerWindow(QMainWindow):
             if self._source is not None:
                 self._source.hide()
             self._restore_pre_edit_geometry()
-        self._update_save_action()
+            # Leaving edit mode exposes the preview: skip the debounce wait.
+            if self._render_timer.isActive():
+                self._render_now()
+        self._update_edit_actions()
 
     def _widen_for_edit(self) -> None:
         """Widen the window for the split view, up to EDIT_MODE_WIDTH.
@@ -869,18 +1030,33 @@ class ViewerWindow(QMainWindow):
 
     @Slot()
     def _source_edited(self) -> None:
-        """Live-update the preview while the source is edited."""
+        """Live-update the preview while the source is edited.
+
+        The text is taken over immediately — saving must not lag behind — but
+        the preview waits for the typing to pause, so a keystroke no longer
+        costs a full render.
+        """
         if self._source is None:
             return
         self._markdown = self._source.toPlainText()
-        self._render()
+        self._update_modified_state()
+        self._render_timer.start()
 
     # -------------------------------------------------------------- files
+
+    def closeEvent(self, event) -> None:
+        """Ask about unsaved changes before the window goes away."""
+        if self._confirm_discard():
+            event.accept()
+        else:
+            event.ignore()
 
     def open(self, path: Path) -> bool:
         reason = rejection_reason(path)
         if reason is not None:
             print(f"heino-reader: cannot open {path}: {reason}", file=sys.stderr)
+            return False
+        if not self._confirm_discard():
             return False
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -888,17 +1064,33 @@ class ViewerWindow(QMainWindow):
             print(f"heino-reader: cannot read {path}: {error}", file=sys.stderr)
             return False
         self._markdown = text
+        previous = self._path
         # The editor may not exist yet; it picks up _markdown when created.
-        if self._source is not None and self._source.toPlainText() != text:
+        replaced = self._source is not None and self._source.toPlainText() != text
+        if replaced:
             self._source.blockSignals(True)
             self._source.setPlainText(text)
             self._source.blockSignals(False)
+        if self._source is not None and (replaced or path != previous):
+            # A document must never be undoable into the one opened before it.
+            self._source.document().clearUndoRedoStacks()
+        self._saved_text = text
         self._adopt_path(path)
-        self._render()
+        self._update_modified_state()
+        self._render_now()
         return True
 
     def _render(self) -> None:
         self.viewer.set_markdown(self._markdown)
+
+    def _render_now(self) -> None:
+        """Render at once, dropping a pending live-preview update.
+
+        Used wherever a stale preview would be visible: opening a file,
+        switching the backend, changing the remote-image setting.
+        """
+        self._render_timer.stop()
+        self._render()
 
     @Slot(str)
     def _on_file_changed(self, path: str) -> None:

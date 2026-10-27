@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.2] - 2026-10-27
+
+### Added
+
+- Source editor: Enter continues quote and list markers, empty items end them.
+- Toolbar lists, quote and heading start on an empty line.
+- Editor: Undo, Redo, toolbar buttons.
+
+### Changed
+
+- Preview: debounced rendering, CSS line heights, lazy highlighting.
+- Editor: text size follows the preview and the zoom.
+
+### Fixed
+
+- Qt preview on HiDPI: font size and line spacing now follow `preview.css`.
+- Editor: unsaved changes, close prompt, title marker.
+
 ## [0.2.1] - 2026-10-27
 
 ### Changed
