@@ -13,18 +13,47 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtGui import (
+    QFont,
+    QFontInfo,
+    QFontMetricsF,
     QImage,
     QPixmap,
+    QTextBlockFormat,
     QTextCursor,
     QTextDocument,
     QTextImageFormat,
 )
-from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
+from PySide6.QtWidgets import QTextEdit, QWidget
 
 from .images import RemoteImageLoader, is_remote, placeholder_image
 from .layout import content_layout
-from .render import PREVIEW_CSS, _resolve_relative_paths, markdown_to_html
+from .render import (
+    PREVIEW_CSS,
+    _resolve_relative_paths,
+    markdown_to_html,
+    preview_body_point_size,
+    preview_font_families,
+    preview_line_height,
+)
 from .utils import open_external
+
+_LINE_HEIGHT_PROPORTIONAL = QTextBlockFormat.LineHeightTypes.ProportionalHeight.value
+
+
+def preview_font(scale: float = 1.0) -> QFont:
+    """The document font for the preview at the given zoom level.
+
+    A point size, not a pixel size: Qt scales points with the screen DPI, so
+    the preview follows the desktop like every other Qt widget. Heading and
+    inline sizes are left to Qt's own HTML scale, which is relative to this
+    font and therefore scales with it.
+    """
+    font = QFont()
+    families = preview_font_families()
+    if families:
+        font.setFamilies(families)
+    font.setPointSizeF(preview_body_point_size() * scale)
+    return font
 
 
 class QtMarkdownView(QTextEdit):
@@ -41,12 +70,17 @@ class QtMarkdownView(QTextEdit):
         self._has_images = False
         self._fit_width = -1
         self._scale = 1.0
-        base_size = QApplication.font().pointSizeF()
-        self._base_point_size = base_size if base_size > 0 else 11.0
         self._remote_enabled = True
         self._remote = RemoteImageLoader(self)
         self._remote.loaded.connect(self._on_remote_loaded)
         self._remote.failed.connect(self._on_remote_failed)
+        # preview.css styles colors, spacing and structure. Its typography
+        # cannot come from a body rule here: setDefaultStyleSheet() never
+        # matches one, because setHtml() parses a fragment without <body>.
+        # The base font is therefore the document font, and the relative
+        # heading sizes are Qt's own HTML scale.
+        self.setFont(preview_font(self._scale))
+        self.document().setDefaultFont(preview_font(self._scale))
         self.document().setDefaultStyleSheet(PREVIEW_CSS)
 
     # --------------------------------------------------------------- API
@@ -70,18 +104,69 @@ class QtMarkdownView(QTextEdit):
         self._has_images = "<img" in html
         self._fit_width = -1  # force a refit for the new content
         self.setHtml(html)
+        self._apply_line_heights()
         self._apply_content_width()
         self._apply_remote_images()
         self._fit_images()
+
+    def _apply_line_heights(self) -> None:
+        """Give every block the line height its CSS rule asks for.
+
+        Qt parses ``line-height`` into the block format but reads the value as
+        a percentage of the font's *natural* line height, while CSS means it
+        relative to the font *size*. The conversion factor between both comes
+        from Qt's own metrics, so the same rule ends up at the same visual
+        spacing as in the Web Engine backend.
+
+        Blocks with no rule of their own — paragraphs, because a ``body`` rule
+        never matches — fall back to the body line height. Qt ignores block
+        line heights for single-line blocks, so the effect shows on wrapped
+        paragraphs, which is where spacing matters.
+        """
+        document = self.document()
+        font = document.defaultFont()
+        natural = QFontMetricsF(font).height()
+        pixel = QFontInfo(font).pixelSize()
+        if natural <= 0 or pixel <= 0:
+            return
+        body = preview_line_height()
+        heading = preview_line_height(heading=True)
+
+        cursor = QTextCursor(document)
+        cursor.beginEditBlock()
+        while True:
+            block_format = cursor.blockFormat()
+            ratio = self._css_line_height(block_format, body, heading)
+            if ratio is not None:
+                percent = ratio * pixel / natural * 100
+                block_format.setLineHeight(percent, _LINE_HEIGHT_PROPORTIONAL)
+                cursor.setBlockFormat(block_format)
+            if not cursor.movePosition(QTextCursor.MoveOperation.NextBlock):
+                break
+        cursor.endEditBlock()
+
+    @staticmethod
+    def _css_line_height(
+        block_format: QTextBlockFormat,
+        body: float | None,
+        heading: float | None,
+    ) -> float | None:
+        """CSS line-height for a block: its own if it has one, else the body's."""
+        if (
+            int(block_format.lineHeightType()) == _LINE_HEIGHT_PROPORTIONAL
+            and block_format.lineHeight() > 0
+        ):
+            return block_format.lineHeight() / 100
+        return heading if block_format.headingLevel() else body
 
     def set_remote_images_enabled(self, enabled: bool) -> None:
         self._remote_enabled = enabled
 
     def set_zoom(self, scale: float) -> None:
         self._scale = scale
-        font = QApplication.font()
-        font.setPointSizeF(self._base_point_size * scale)
+        font = preview_font(scale)
         self.setFont(font)
+        self.document().setDefaultFont(font)
         self._refit()
 
     # ------------------------------------------------------------ layout

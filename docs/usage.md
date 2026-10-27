@@ -95,7 +95,10 @@ Formatting (edit mode only):
 
 ## Theme
 
-The preview theme is a plain stylesheet: `src/HeinoReader/preview.css`. Toolbar
-icons are bundled Material Symbols Outlined SVGs, rendered in the palette text
-color so they stay readable in light and dark themes; if a file is missing, the
-app falls back to the desktop theme icons.
+The preview theme is a plain stylesheet: `src/HeinoReader/preview.css`. Both
+backends use it, so it keeps standard CSS (`em`, `line-height`, `max-width`);
+the Qt backend derives its typography from the body rule and hands the size to
+Qt in points, which keeps the text DPI aware. Toolbar icons are bundled Material
+Symbols Outlined SVGs, rendered in the palette text color so they stay readable
+in light and dark themes; if a file is missing, the app falls back to the
+desktop theme icons.

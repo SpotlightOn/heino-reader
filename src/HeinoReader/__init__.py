@@ -41,6 +41,9 @@ from .render import (
     _resolve_relative_paths,
     _resolve_url,
     markdown_to_html,
+    preview_body_point_size,
+    preview_font_families,
+    preview_line_height,
     render_html_document,
 )
 from .utils import open_external
@@ -90,6 +93,9 @@ __all__ = [
     "main",
     "markdown_to_html",
     "open_external",
+    "preview_body_point_size",
+    "preview_font_families",
+    "preview_line_height",
     "render_html_document",
     "show_about",
     "web_engine_available",
