@@ -70,5 +70,10 @@ Every tagged release carries ready-made builds on the
 | macOS | `heino-reader-<version>-macos-arm64.zip` / `-x86_64.zip` | contains the `.app` bundle |
 | Windows | `heino-reader-<version>-windows-x86_64.exe` | single executable, no installer |
 
+Releases up to 0.2.1 ship the Windows build unversioned as `heino-reader.exe`;
+from the next release on all three artifacts carry the version in the file name.
+
 The macOS and Windows builds are unsigned, so the OS will ask for confirmation
-on first start.
+on first start. The test suite only runs on Linux — the macOS and Windows builds
+come out of CI but are not covered by the test matrix, so treat them as
+best-effort.

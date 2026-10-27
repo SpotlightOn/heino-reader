@@ -7,9 +7,12 @@
 <p align="center">
   <a href="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml"><img src="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/heino-reader/"><img src="https://img.shields.io/pypi/v/heino-reader?style=flat" alt="PyPI"></a>
-  <a href="https://pypi.org/project/heino-reader/"><img src="https://img.shields.io/pypi/pyversions/heino-reader?style=flat" alt="Python versions"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python: 3.10+"></a>
   <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/Qt_for_Python-PySide6-41cd52" alt="Qt for Python"></a>
   <a href="https://socket.dev/pypi/package/heino-reader"><img src="https://socket.dev/api/badge/pypi/package/heino-reader" alt="Socket: supply-chain score"></a>
+  <a href="docs/installation.md#prebuilt-binaries-no-python-needed"><img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" alt="Linux"></a>
+  <a href="docs/installation.md#prebuilt-binaries-no-python-needed"><img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS"></a>
+  <a href="docs/installation.md#prebuilt-binaries-no-python-needed"><img src="https://img.shields.io/badge/Windows-0078D6" alt="Windows"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/SpotlightOn/heino-reader" alt="License: MIT"></a>
 </p>
 
