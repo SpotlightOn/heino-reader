@@ -77,7 +77,7 @@ EDIT_MODE_WIDTH = 1200
 LIVE_PREVIEW_DELAY_MS = 200
 
 # Keep in sync with pyproject.toml.
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 ABOUT_TEXT = (
     f"<b>Heino Reader {VERSION}</b>"
