@@ -42,6 +42,9 @@ it. The window splits: markdown source on the left, live preview on the right.
 - **Undo** and **Redo** start the second toolbar row (or `Ctrl+Z`,
   `Ctrl+Shift+Z`, `Ctrl+Y`); both are greyed out while there is nothing to
   undo or redo. The preview is read-only, so it has no history of its own.
+- Closing the window, opening another file or dropping a file onto the window
+  with unsaved edits asks first (Save / Discard / Cancel). Unsaved changes are
+  marked in the title bar, so nothing is lost silently.
 - The block commands (quote, both lists, headings) also work on an empty line:
   the marker is inserted and the cursor lands behind it, so the next keystroke
   is already inside the block. A list started that way continues the one above

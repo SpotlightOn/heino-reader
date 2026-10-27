@@ -15,6 +15,7 @@
 ### Fixed
 
 - Qt preview on HiDPI: font size and line spacing now follow `preview.css`.
+- Editor: unsaved changes, close prompt, title marker.
 
 ## [0.2.1] - 2026-10-27
 

@@ -6,6 +6,7 @@ import os
 import sys
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Literal
 
 from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QFontDatabase, QKeySequence
@@ -144,6 +145,34 @@ def show_about(parent: QWidget) -> None:
     QMessageBox.about(parent, "About Heino Reader", ABOUT_TEXT)
 
 
+def ask_discard_changes(
+    parent: QWidget, name: str
+) -> Literal["save", "discard", "cancel"]:
+    """Ask what to do with unsaved edits before they would be lost.
+
+    Returns which button the user picked; "cancel" means keep everything as
+    it is. A separate function, so the window does not have to own a dialog
+    and tests can stand in for the answer.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Unsaved changes")
+    box.setText(f"{name} has unsaved changes.")
+    box.setInformativeText("Save them before they are lost?")
+    save = box.addButton("&Save", QMessageBox.ButtonRole.AcceptRole)
+    discard = box.addButton("&Discard", QMessageBox.ButtonRole.DestructiveRole)
+    cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(save)
+    box.setEscapeButton(cancel)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is save:
+        return "save"
+    if clicked is discard:
+        return "discard"
+    return "cancel"
+
+
 # Preview backends. The Qt text renderer is the default: it starts
 # instantly and needs no Chromium process. The WebEngine backend is a
 # deliberate opt-in (View menu or --renderer web) and is imported lazily.
@@ -207,6 +236,9 @@ class ViewerWindow(QMainWindow):
         self._renderer = chosen if chosen in RENDERERS else DEFAULT_RENDERER
         self._markdown = PLACEHOLDER_MD
         self._path: Path | None = None
+        # The text the file on disk has, to tell unsaved changes from a
+        # buffer that was merely reverted with undo.
+        self._saved_text = PLACEHOLDER_MD
         # Geometry to restore when leaving edit mode (None = never widened).
         self._pre_edit_geometry: QRect | None = None
         base_size = QApplication.font().pointSizeF()
@@ -250,7 +282,7 @@ class ViewerWindow(QMainWindow):
         if path is not None:
             self.open(path)
         else:
-            self.setWindowTitle("Heino Reader")
+            self.setWindowTitle("Heino Reader[*]")
             self._render()
 
     # ------------------------------------------------------------------ UI
@@ -534,38 +566,48 @@ class ViewerWindow(QMainWindow):
             self.open(path)
 
     @Slot()
-    def _save(self) -> None:
-        """Write the edit buffer back to the markdown file."""
-        if self._path is None or self._source is None:
-            return
-        self._write(self._path)
+    def _save(self) -> bool:
+        """Write the edit buffer to the file; False when nothing was written.
+
+        Without a file yet (the placeholder document), saving asks where to
+        put it — the same path the close prompt takes.
+        """
+        if self._source is None:
+            return False
+        if self._path is None:
+            return self._save_as()
+        return self._write(self._path)
 
     @Slot()
-    def _save_as(self) -> None:
+    def _save_as(self) -> bool:
         """Write the edit buffer to the chosen file and keep editing it."""
         if self._source is None:
-            return
+            return False
         if self._path is not None:
             start = str(self._path)
         else:
             start = str(Path.home() / "untitled.md")
         path = ask_save_file(self, start)
         if path is None:
-            return
+            return False
         if path == self._path:
-            self._write(path)
-            return
-        if self._write(path):
-            self._adopt_path(path)
-            self._render_now()
+            return self._write(path)
+        if not self._write(path):
+            return False
+        self._adopt_path(path)
+        self._render_now()
+        return True
 
     def _write(self, path: Path) -> bool:
         """Write the edit buffer to ``path``; False when that fails."""
+        text = self._source.toPlainText()
         try:
-            path.write_text(self._source.toPlainText(), encoding="utf-8")
+            path.write_text(text, encoding="utf-8")
         except OSError as error:
             print(f"heino-reader: cannot save {path}: {error}", file=sys.stderr)
             return False
+        self._saved_text = text
+        self._update_modified_state()
         return True
 
     def _adopt_path(self, path: Path) -> None:
@@ -576,8 +618,39 @@ class ViewerWindow(QMainWindow):
         if watched:
             self._watcher.removePaths(watched)
         self._watcher.addPath(str(path))
-        self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader")
+        self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader[*]")
+        self._update_modified_state()
         self._update_edit_actions()
+
+    def _is_modified(self) -> bool:
+        """True while the buffer holds text the file on disk does not have.
+
+        Comparing the text instead of latching a flag means undoing back to
+        the saved state counts as clean again.
+        """
+        if self._source is None:
+            return False
+        return self._source.toPlainText() != self._saved_text
+
+    def _update_modified_state(self) -> None:
+        """Show unsaved changes in the title, the way Qt windows do."""
+        self.setWindowModified(self._is_modified())
+
+    def _confirm_discard(self) -> bool:
+        """True when the buffer may go, asking about unsaved changes first.
+
+        Guards everything that throws the buffer away: closing the window,
+        opening another file, dropping a file onto the window.
+        """
+        if not self._is_modified():
+            return True
+        name = self._path.name if self._path is not None else "This document"
+        choice = ask_discard_changes(self, name)
+        if choice == "discard":
+            return True
+        if choice == "save":
+            return self._save()
+        return False
 
     def _update_edit_actions(self) -> None:
         """Match saving, undo/redo and formatting to the current mode.
@@ -949,14 +1022,24 @@ class ViewerWindow(QMainWindow):
         if self._source is None:
             return
         self._markdown = self._source.toPlainText()
+        self._update_modified_state()
         self._render_timer.start()
 
     # -------------------------------------------------------------- files
+
+    def closeEvent(self, event) -> None:
+        """Ask about unsaved changes before the window goes away."""
+        if self._confirm_discard():
+            event.accept()
+        else:
+            event.ignore()
 
     def open(self, path: Path) -> bool:
         reason = rejection_reason(path)
         if reason is not None:
             print(f"heino-reader: cannot open {path}: {reason}", file=sys.stderr)
+            return False
+        if not self._confirm_discard():
             return False
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -974,7 +1057,9 @@ class ViewerWindow(QMainWindow):
         if self._source is not None and (replaced or path != previous):
             # A document must never be undoable into the one opened before it.
             self._source.document().clearUndoRedoStacks()
+        self._saved_text = text
         self._adopt_path(path)
+        self._update_modified_state()
         self._render_now()
         return True
 

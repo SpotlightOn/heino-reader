@@ -207,6 +207,92 @@ def test_save_stays_disabled_without_a_file(qtbot):
     assert not menu_action(window, "File", "Save").isEnabled()
 
 
+# ------------------------------------------------------- unsaved changes
+
+
+def _edit_buffer(window, text):
+    """Append text to the source buffer as one undoable change."""
+    edit_action(window).trigger()
+    cursor = window._source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText(text)
+
+
+def test_closing_with_unsaved_changes_asks_first(qtbot, window, monkeypatch):
+    _edit_buffer(window, " not saved")
+    asked = []
+    monkeypatch.setattr(
+        HeinoReader.window,
+        "ask_discard_changes",
+        lambda parent, name: asked.append(name) or "cancel",
+    )
+
+    window.close()
+
+    assert asked == ["notes.md"]
+    assert window.isVisible(), "cancel must keep the window open"
+    assert window.isWindowModified()
+
+
+def test_closing_saves_when_the_user_asks(qtbot, window, md_file, monkeypatch):
+    _edit_buffer(window, " kept")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "save"
+    )
+
+    window.close()
+
+    assert "kept" in md_file.read_text(encoding="utf-8")
+    assert not window.isVisible()
+
+
+def test_closing_discards_when_the_user_asks(qtbot, window, md_file, monkeypatch):
+    before = md_file.read_text(encoding="utf-8")
+    _edit_buffer(window, " dropped")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "discard"
+    )
+
+    window.close()
+
+    assert md_file.read_text(encoding="utf-8") == before
+    assert not window.isVisible()
+
+
+def test_clean_window_closes_without_asking(qtbot, window, monkeypatch):
+    def refuse(*args):
+        raise AssertionError("no prompt expected for an unmodified document")
+
+    monkeypatch.setattr(HeinoReader.window, "ask_discard_changes", refuse)
+    window.close()
+    assert not window.isVisible()
+
+
+def test_opening_another_file_asks_about_unsaved_changes(
+    qtbot, window, md_file, monkeypatch
+):
+    _edit_buffer(window, " unsaved")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "cancel"
+    )
+
+    assert not window.open(md_file.parent / "other.md")
+    assert window._path == md_file
+    assert "unsaved" in window._source.toPlainText()
+
+
+def test_title_marks_unsaved_changes(qtbot, window, monkeypatch):
+    assert not window.isWindowModified()
+    _edit_buffer(window, " dirty")
+    assert window.isWindowModified()
+
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_save_file", lambda parent, start: None
+    )
+    menu_action(window, "File", "Save").trigger()
+    assert not window.isWindowModified()
+
+
 def test_close_menu_item_closes_window(window):
     menu_action(window, "File", "Close").trigger()
     assert not window.isVisible()

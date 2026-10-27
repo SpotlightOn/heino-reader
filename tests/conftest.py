@@ -15,3 +15,16 @@ os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
 def isolated_settings(tmp_path, monkeypatch):
     """Keep the user's real ~/.config/heino-reader out of the test suite."""
     monkeypatch.setenv("HEINO_READER_CONFIG_DIR", str(tmp_path / "config"))
+
+
+@pytest.fixture(autouse=True)
+def no_modal_prompts(monkeypatch):
+    """Never let a window-close teardown block on the unsaved-changes dialog.
+
+    Tests that care about the prompt patch ``ask_discard_changes`` themselves,
+    which overrides this default.
+    """
+    monkeypatch.setattr(
+        "HeinoReader.window.ask_discard_changes",
+        lambda parent, name: "discard",
+    )
