@@ -39,9 +39,16 @@ it. The window splits: markdown source on the left, live preview on the right.
   numbered list.
 - Every formatting command is a toggle: applied to text that already carries the
   marker, it removes it again. Each command is a single undo step.
+- The block commands (quote, both lists, headings) also work on an empty line:
+  the marker is inserted and the cursor lands behind it, so the next keystroke
+  is already inside the block. A list started that way continues the one above
+  it — indentation, bullet character and numbering included.
 - The source pane is a real code editor: markdown syntax highlighting, Tab /
-  Shift+Tab indent whole lines, Enter keeps the current indentation (so lists,
-  quotes and indented blocks stay aligned), and a bar marks block quotes.
+  Shift+Tab indent whole lines, and a bar marks block quotes.
+- Enter continues the block you are in: `> ` stays a quote, `- `, `* ` and
+  `+ ` open the next bullet, `1. ` counts up and keeps its `.` or `)`
+  delimiter. Nested markers and indentation are preserved. Enter on an item
+  that is still empty ends the list or quote instead of adding an empty item.
 - **View → Line Numbers** shows an optional gutter. The editor works without it.
 
 ## Insert dialogs

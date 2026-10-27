@@ -1,4 +1,4 @@
-"""Tests for the source editor: Enter indentation and the quote bar."""
+"""Tests for the source editor: Enter continuation and the quote bar."""
 
 import pytest
 from PySide6.QtCore import Qt
@@ -6,7 +6,9 @@ from PySide6.QtCore import Qt
 from HeinoReader.editor.source_edit import (
     MarkdownSourceEdit,
     enter_indent,
+    enter_prefix,
     is_quote_line,
+    split_markers,
 )
 
 
@@ -26,6 +28,79 @@ from HeinoReader.editor.source_edit import (
 )
 def test_enter_indent_aligns_to_the_text_column(line, indent):
     assert enter_indent(line) == indent
+
+
+@pytest.mark.parametrize(
+    ("line", "prefix", "text"),
+    [
+        ("> quoted", "> ", "quoted"),
+        (">quoted", ">", "quoted"),
+        (">  quoted", ">  ", "quoted"),
+        ("> > nested", "> > ", "nested"),
+        ("- item", "- ", "item"),
+        ("* item", "* ", "item"),
+        ("+ item", "+ ", "item"),
+        ("1. item", "1. ", "item"),
+        ("12) item", "12) ", "item"),
+        ("  - nested", "  - ", "nested"),
+        ("    - nested", "    - ", "nested"),
+        ("> - quoted list", "> - ", "quoted list"),
+        ("plain text", "", "plain text"),
+        ("    indented code", "", "    indented code"),
+        ("-not-a-list", "", "-not-a-list"),
+        ("", "", ""),
+    ],
+)
+def test_split_markers_separates_prefix_and_text(line, prefix, text):
+    assert split_markers(line) == (prefix, text)
+
+
+@pytest.mark.parametrize(
+    ("line", "prefix"),
+    [
+        # Quotes continue with their marker, nested ones too.
+        ("> quoted", "> "),
+        ("> > nested", "> > "),
+        # Bullets keep the character the user typed.
+        ("- item", "- "),
+        ("* item", "* "),
+        ("+ item", "+ "),
+        # Ordered lists count up, keeping the delimiter.
+        ("1. item", "2. "),
+        ("9. item", "10. "),
+        ("3) item", "4) "),
+        # Indentation and marker order survive.
+        ("  - nested", "  - "),
+        ("    - nested", "    - "),
+        ("> - quoted list", "> - "),
+        ("> 1. quoted item", "> 2. "),
+        # Lines without a marker keep their alignment instead.
+        ("plain text", ""),
+        ("    indented code", "    "),
+        ("", ""),
+    ],
+)
+def test_enter_prefix_continues_the_block(line, prefix):
+    assert enter_prefix(line) == prefix
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        ">",
+        "> ",
+        "- ",
+        "* ",
+        "+ ",
+        "1. ",
+        "  2) ",
+        "  - ",
+        "> - ",
+    ],
+)
+def test_enter_prefix_ends_an_empty_item(line):
+    """On an item without text, Enter closes the list or quote."""
+    assert enter_prefix(line) == ""
 
 
 @pytest.mark.parametrize(
@@ -67,17 +142,44 @@ def test_enter_at_end_of_indented_line_keeps_the_indent(qtbot):
     assert editor.textCursor().positionInBlock() == 4
 
 
-def test_enter_after_list_item_aligns_under_the_text(qtbot):
-    editor = make_editor(qtbot, "- first")
+def test_enter_after_quote_continues_the_quote(qtbot):
+    editor = make_editor(qtbot, "> quoted")
     press_enter(qtbot, editor)
-    assert editor.toPlainText() == "- first\n  "
+    assert editor.toPlainText() == "> quoted\n> "
     assert editor.textCursor().positionInBlock() == 2
 
 
-def test_enter_after_quote_aligns_under_the_text(qtbot):
-    editor = make_editor(qtbot, "> quoted")
+def test_enter_after_bullet_item_continues_the_list(qtbot):
+    editor = make_editor(qtbot, "- first")
     press_enter(qtbot, editor)
-    assert editor.toPlainText() == "> quoted\n  "
+    assert editor.toPlainText() == "- first\n- "
+    assert editor.textCursor().positionInBlock() == 2
+
+
+def test_enter_after_ordered_item_counts_up(qtbot):
+    editor = make_editor(qtbot, "1. first")
+    press_enter(qtbot, editor)
+    assert editor.toPlainText() == "1. first\n2. "
+    assert editor.textCursor().positionInBlock() == 3
+
+
+def test_enter_on_empty_item_leaves_the_list(qtbot):
+    editor = make_editor(qtbot, "- ")
+    press_enter(qtbot, editor)
+    assert editor.toPlainText() == "\n"
+    assert editor.textCursor().positionInBlock() == 0
+
+
+def test_enter_on_empty_quote_leaves_the_quote(qtbot):
+    editor = make_editor(qtbot, "> ")
+    press_enter(qtbot, editor)
+    assert editor.toPlainText() == "\n"
+
+
+def test_enter_on_empty_nested_item_leaves_the_list(qtbot):
+    editor = make_editor(qtbot, "  - ")
+    press_enter(qtbot, editor)
+    assert editor.toPlainText() == "\n"
 
 
 def test_enter_on_plain_text_adds_no_indent(qtbot):

@@ -86,7 +86,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             (r"__[^_\n]+__", fmt(text, bold=True), 0),
             (r"\*[^*\n]+\*", fmt(italic=True), 0),
             (r"\[[^\]\n]*\]\([^)\n]+\)", fmt(accent), 0),
-            (r"^\s*([-*+]|\d+\.) ", fmt(dim), 0),
+            (r"^\s*([-*+]|\d+[.)]) ", fmt(dim), 0),
             (r"^\s*> ", fmt(dim), 0),
         ]
         self._compiled = [(re.compile(p), f) for p, f, _ in self._rules]
