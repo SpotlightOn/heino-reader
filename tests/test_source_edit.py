@@ -3,7 +3,7 @@
 import pytest
 from PySide6.QtCore import Qt
 
-from heinoreader.editor.source_edit import (
+from HeinoReader.editor.source_edit import (
     MarkdownSourceEdit,
     enter_indent,
     is_quote_line,

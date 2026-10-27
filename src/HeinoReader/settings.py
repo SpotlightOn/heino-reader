@@ -1,7 +1,7 @@
 """Persistent user settings, stored in the XDG config directory.
 
-The file lives at ``$XDG_CONFIG_HOME/heinoreader/settings.ini`` (usually
-``~/.config/heinoreader/settings.ini``). ``HEINOREADER_CONFIG_DIR``
+The file lives at ``$XDG_CONFIG_HOME/heino-reader/settings.ini`` (usually
+``~/.config/heino-reader/settings.ini``). ``HEINO_READER_CONFIG_DIR``
 overrides the directory, which the test suite uses to stay isolated.
 """
 
@@ -18,14 +18,14 @@ REMOTE_IMAGES_KEY = "view/remote_images"
 
 
 def config_dir() -> Path:
-    """Directory that holds heinoreader's settings file."""
-    override = os.environ.get("HEINOREADER_CONFIG_DIR")
+    """Directory that holds Heino Reader's settings file."""
+    override = os.environ.get("HEINO_READER_CONFIG_DIR")
     if override:
         return Path(override)
     base = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.GenericConfigLocation
     )
-    return Path(base or Path.home() / ".config") / "heinoreader"
+    return Path(base or Path.home() / ".config") / "heino-reader"
 
 
 class Settings:

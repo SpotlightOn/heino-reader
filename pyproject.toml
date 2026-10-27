@@ -1,17 +1,46 @@
 [project]
 name = "heino-reader"
-version = "0.2.0"
+version = "0.2.1"
 description = "A fast document viewer for markdown files, built with PySide6"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
+# shields.io derives the "python versions" badge from these classifiers,
+# not from requires-python; without them the badge renders "missing".
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+]
+# Only the Qt base modules are required: QtCore, QtGui, QtWidgets, QtSvg and
+# QtNetwork all ship with pyside6-essentials. QtWebEngine lives in
+# pyside6-addons (~440 MB installed) and is therefore an optional extra.
 dependencies = [
     "markdown-it-py>=4.2.0",
     "pygments>=2.21.0",
-    "PySide6>=6.6,<6.12",
+    "PySide6-Essentials>=6.6,<6.12",
 ]
 
+[project.optional-dependencies]
+# pip install "heino-reader[web]" enables View -> Web Engine Preview.
+web = ["PySide6-Addons>=6.6,<6.12"]
+
+[project.urls]
+Homepage = "https://github.com/SpotlightOn/heino-reader"
+Repository = "https://github.com/SpotlightOn/heino-reader"
+Issues = "https://github.com/SpotlightOn/heino-reader/issues"
+Changelog = "https://github.com/SpotlightOn/heino-reader/releases"
+
 [project.scripts]
-heinoreader = "heinoreader:main"
+heino-reader = "HeinoReader:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -20,15 +49,24 @@ testpaths = ["tests"]
 line-length = 88
 target-version = "py310"
 
+[tool.ruff.lint]
+# The package directory is HeinoReader: a hyphen is not legal in a Python
+# identifier, so the product name "Heino Reader" is spelled in PascalCase
+# here and only here.
+ignore = ["N999"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/heinoreader"]
+packages = ["src/HeinoReader"]
 
 [dependency-groups]
+# The test suite exercises the WebEngine backend, so the dev environment
+# keeps pyside6-addons even though the app itself installs without it.
 dev = [
+    "PySide6-Addons>=6.6,<6.12",
     "pytest>=9.1.1",
     "pytest-qt>=4.5.0",
     "ruff>=0.17.2",

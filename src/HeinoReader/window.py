@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, Slot
@@ -70,13 +71,18 @@ TOOLBAR_STYLE = """
 EDIT_MODE_WIDTH = 1200
 
 # Keep in sync with pyproject.toml.
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 ABOUT_TEXT = (
     f"<b>Heino Reader {VERSION}</b>"
     "<p>A fast document viewer for markdown files, built with PySide6.</p>"
     "<p>An homage to Heino: dark sunglasses on, no fuss, just the text.</p>"
+    "<p>Optional: the Web Engine preview (View menu) renders with QtWebEngine "
+    "for full CSS fidelity. It is the better but slower renderer and needs "
+    'PySide6-Addons (<a href="https://pypi.org/project/PySide6-Addons/">'
+    "pypi.org/project/PySide6-Addons</a>).</p>"
     "<p>Toolbar icons: Material Symbols Outlined (Apache License 2.0).</p>"
+    "<p>License: MIT. Copyright (c) 2026 SpotlightOn.</p>"
 )
 
 PLACEHOLDER_MD = """\
@@ -89,14 +95,17 @@ on, no fuss, just the text.
 
 Drop a markdown file here, or start Heino Reader with a file path:
 
-    heinoreader notes.md
+    heino-reader notes.md
 
 - **Open** with `Ctrl+O` or drag a file onto the window
 - **Edit** with the pencil button: source left, live preview right;
   `Ctrl+S` saves, `Ctrl+Shift+S` saves as
 - **Zoom** with `Ctrl++` / `Ctrl+-`, reset with `Ctrl+0`
 - **Remote images**: View -> Load Remote Images (off sends no requests)
-- **Full CSS fidelity**: View -> Web Engine Preview
+- **Full CSS fidelity**: View -> Web Engine Preview. This is the better but
+  slower renderer: it draws with QtWebEngine instead of Qt's text engine and
+  needs the optional PySide6-Addons package
+  (https://pypi.org/project/PySide6-Addons/, `pip install "heino-reader[web]"`)
 """
 
 
@@ -138,6 +147,26 @@ RENDERER_QT = "qt"
 DEFAULT_RENDERER = RENDERER_QT
 RENDERERS = (RENDERER_WEB, RENDERER_QT)
 
+WEB_EXTRA_HINT = (
+    "The Web Engine preview renders markdown with QtWebEngine (Chromium), so "
+    "tables, borders and backgrounds follow the CSS exactly. It is more "
+    "faithful than the default Qt text renderer, but slower to start and a "
+    "much bigger download.\n\n"
+    "It needs the optional PySide6-Addons package:\n"
+    "https://pypi.org/project/PySide6-Addons/\n\n"
+    '    pip install "heino-reader[web]"\n\n'
+    "(or run scripts/install.sh --web)"
+)
+
+
+def web_engine_available() -> bool:
+    """True when pyside6-addons (QtWebEngine) is installed.
+
+    Uses a spec lookup instead of an import, so checking never loads the
+    Chromium libraries.
+    """
+    return find_spec("PySide6.QtWebEngineWidgets") is not None
+
 
 def create_markdown_view(kind: str, parent: QWidget | None = None):
     """Return a preview widget for the given renderer kind.
@@ -163,6 +192,13 @@ class ViewerWindow(QMainWindow):
         chosen = renderer or self._settings.get_string(
             RENDERER_KEY, DEFAULT_RENDERER
         )
+        if chosen == RENDERER_WEB and not web_engine_available():
+            print(
+                "heino-reader: QtWebEngine is not installed, "
+                "falling back to the Qt renderer",
+                file=sys.stderr,
+            )
+            chosen = DEFAULT_RENDERER
         self._renderer = chosen if chosen in RENDERERS else DEFAULT_RENDERER
         self._markdown = PLACEHOLDER_MD
         self._path: Path | None = None
@@ -425,10 +461,20 @@ class ViewerWindow(QMainWindow):
         self._web_preview_action = QAction("&Web Engine Preview", self)
         self._web_preview_action.setCheckable(True)
         self._web_preview_action.setChecked(self._renderer == RENDERER_WEB)
-        self._web_preview_action.setToolTip(
-            "Opt in to QtWebEngine for full HTML/CSS fidelity; off (default) "
-            "uses the lightweight Qt text renderer and does not load Chromium"
-        )
+        if web_engine_available():
+            self._web_preview_action.setToolTip(
+                "Render with QtWebEngine for full HTML/CSS fidelity. Better "
+                "but slower than the Qt text renderer (default), which never "
+                "loads Chromium"
+            )
+        else:
+            self._web_preview_action.setEnabled(False)
+            self._web_preview_action.setToolTip(
+                "Not installed. The Web Engine preview is the better but "
+                "slower renderer and needs PySide6-Addons "
+                '(https://pypi.org/project/PySide6-Addons/): pip install '
+                '"heino-reader[web]"'
+            )
         self._web_preview_action.toggled.connect(self._set_web_preview)
         view_menu.addAction(self._web_preview_action)
 
@@ -479,7 +525,7 @@ class ViewerWindow(QMainWindow):
         try:
             path.write_text(self._source.toPlainText(), encoding="utf-8")
         except OSError as error:
-            print(f"heinoreader: cannot save {path}: {error}", file=sys.stderr)
+            print(f"heino-reader: cannot save {path}: {error}", file=sys.stderr)
             return False
         return True
 
@@ -546,7 +592,18 @@ class ViewerWindow(QMainWindow):
             return
         new = self._views.get(kind)
         if new is None:
-            new = create_markdown_view(kind, self)
+            try:
+                new = create_markdown_view(kind, self)
+            except ImportError:
+                # pyside6-addons is missing: keep the current backend and
+                # explain instead of dying on a lazy import.
+                QMessageBox.information(
+                    self, "Web Engine Preview unavailable", WEB_EXTRA_HINT
+                )
+                self._web_preview_action.blockSignals(True)
+                self._web_preview_action.setChecked(False)
+                self._web_preview_action.blockSignals(False)
+                return
             new.set_zoom(self._scale)
             self._views[kind] = new
         new.set_base_dir(
@@ -823,12 +880,12 @@ class ViewerWindow(QMainWindow):
     def open(self, path: Path) -> bool:
         reason = rejection_reason(path)
         if reason is not None:
-            print(f"heinoreader: cannot open {path}: {reason}", file=sys.stderr)
+            print(f"heino-reader: cannot open {path}: {reason}", file=sys.stderr)
             return False
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as error:
-            print(f"heinoreader: cannot read {path}: {error}", file=sys.stderr)
+            print(f"heino-reader: cannot read {path}: {error}", file=sys.stderr)
             return False
         self._markdown = text
         # The editor may not exist yet; it picks up _markdown when created.

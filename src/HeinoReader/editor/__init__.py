@@ -4,7 +4,7 @@ This subpackage groups everything that makes up the editable code pane:
 the plain-text editor widget with its line-number gutter, the syntax
 highlighter, and the GUI-free formatting operations that rewrite markdown
 at the cursor. The viewer window imports these pieces from here; nothing
-in this package depends back on the top-level heinoreader module.
+in this package depends back on the top-level Heino Reader module.
 """
 
 from __future__ import annotations

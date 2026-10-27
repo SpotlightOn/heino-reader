@@ -3,7 +3,7 @@
 import pytest
 from PySide6.QtGui import QTextCursor, QTextDocument
 
-from heinoreader import formatting
+from HeinoReader import formatting
 
 
 @pytest.fixture

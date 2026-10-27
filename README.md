@@ -3,6 +3,7 @@
 [![CI](https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/heino-reader)](https://pypi.org/project/heino-reader/)
 [![Python versions](https://img.shields.io/pypi/pyversions/heino-reader)](https://pypi.org/project/heino-reader/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Qt for Python](https://img.shields.io/badge/Qt_for_Python-PySide6-41cd52)](https://doc.qt.io/qtforpython-6/)
 
 A fast document viewer for markdown files, built with PySide6.
@@ -16,22 +17,27 @@ on, no fuss, just the text.
 Heino Reader renders markdown read-only: `markdown-it-py` (CommonMark plus
 tables) converts it to HTML, Pygments highlights code blocks, and Qt's rich
 text engine paints the result with a stylesheet theme. A QtWebEngine backend
-is available as an opt-in for full HTML/CSS fidelity. It can be started with
-a file path, so it can be bound to the `.md` extension in file managers like
-Dolphin.
+is available as an opt-in: it is the better but slower renderer with full
+HTML/CSS fidelity (see [Two preview backends](#two-preview-backends)). It can
+be started with a file path, so it can be bound to the `.md` extension in file
+managers like Dolphin.
 
 ## Features
 
 - CommonMark rendering with a GitHub-style theme: headings, nested lists,
   tables, block quotes, inline and fenced code with Pygments syntax colors.
-  The theme is a plain stylesheet: `src/heinoreader/preview.css`
+  The theme is a plain stylesheet: `src/HeinoReader/preview.css`
 - Code blocks and quotes are framed with a border, a background and real
   inner padding; blocks keep their distance to the text above and below
 - Two preview backends, switchable at runtime (**View → Web Engine
   Preview**) or via `--renderer qt|web` (default `qt`). The `qt` backend
-  uses QTextEdit, starts instantly and is limited by Qt's small CSS subset;
-  QtWebEngine is the faithful renderer and is loaded only when it is
-  actually selected
+  uses QTextEdit, starts instantly and is limited by Qt's small CSS subset.
+  QtWebEngine is the **better but slower** renderer: tables, borders and
+  backgrounds follow the CSS exactly, but it has to start Chromium and
+  needs a bigger install. It ships in the optional `web` extra
+  (`pip install "heino-reader[web]"`, `PySide6-Addons` from
+  <https://pypi.org/project/PySide6-Addons/>), because `pyside6-addons`
+  costs 439 MB installed
 - Fast start: only what is needed is loaded. The Qt preview starts without
   Chromium, and the whole editor stack (source pane, syntax highlighter,
   line-number gutter) is created on the first click on **Edit mode**
@@ -129,15 +135,36 @@ Apache License 2.0, © Google) and are rendered with the palette text color,
 so they stay readable in light and dark themes. If a file is missing, the
 app falls back to the desktop theme icons.
 
+## Two preview backends
+
+|  | Qt text renderer (default) | Web Engine preview (optional) |
+| --- | --- | --- |
+| Engine | `QTextDocument` | QtWebEngine (Chromium) |
+| Start | instant, no Chromium process | slower, starts Chromium |
+| HTML/CSS | small subset: borders and padding only on table cells, block backgrounds repeat per line | full fidelity |
+| Install size | `pyside6-essentials`, ~260 MB | plus `pyside6-addons`, ~440 MB more |
+
+The **Web Engine preview** is the better but slower renderer: switch it on in
+**View → Web Engine Preview** or start with `--renderer web`. It needs the
+optional [PySide6-Addons](https://pypi.org/project/PySide6-Addons/) package:
+
+```sh
+pip install "heino-reader[web]"
+```
+
+Without it the menu entry stays greyed out, the app falls back to the Qt
+renderer and says so on stderr — no crash, no hidden download.
+
 ## Usage
 
 ```sh
-uv run heinoreader path/to/notes.md
-uv run heinoreader --renderer web path/to/notes.md   # opt in to QtWebEngine
+uv run heino-reader path/to/notes.md
+uv run heino-reader --renderer web path/to/notes.md   # needs the web extra
 ```
 
-`uv run python -m heinoreader path/to/notes.md` works as well. No argument
-opens the viewer with a short guide.
+`uv run python -m HeinoReader path/to/notes.md` works as well (the Python
+package name cannot contain a hyphen). No argument opens the viewer with a
+short guide.
 
 ## Install locally (XDG)
 
@@ -148,19 +175,29 @@ the launcher in `~/.local/bin`, the desktop entry in
 With **uv** (isolated tool environment, no manual virtualenv):
 
 ```sh
-scripts/install-uv.sh
+scripts/install-uv.sh              # Qt renderer only, ~260 MB installed
+scripts/install-uv.sh --web        # plus QtWebEngine, ~700 MB installed
 ```
 
-Without uv (private virtualenv under `$XDG_DATA_HOME/heinoreader/venv`):
+Without uv (private virtualenv under `$XDG_DATA_HOME/heino-reader/venv`):
 
 ```sh
-scripts/install.sh
+scripts/install.sh                 # Qt renderer only, ~260 MB installed
+scripts/install.sh --web           # plus QtWebEngine, ~700 MB installed
 ```
 
-Both accept `--uninstall`. Afterwards `heinoreader` is available on your
-PATH (when `~/.local/bin` is), and you can associate `.md` files in Dolphin:
-right-click → *Open With* → *Other Application* → *Heino Reader*, optionally
-as the default.
+The default install stays small on purpose. The app needs only Qt's base
+modules, which ship in `pyside6-essentials` (`QtCore`, `QtGui`,
+`QtWidgets`, `QtSvg`, `QtNetwork`). The Web Engine preview needs
+`pyside6-addons`, and that package is 439 MB installed — 195 MB of it is
+`libQt6WebEngineCore.so` alone. So `--web` is an explicit choice; without
+it **View → Web Engine Preview** is greyed out and the app falls back to
+the Qt renderer with a note on stderr.
+
+Both scripts also accept `--uninstall`. Afterwards `heino-reader` is
+available on your PATH (when `~/.local/bin` is), and you can associate
+`.md` files in Dolphin: right-click → *Open With* → *Other Application* →
+*Heino Reader*, optionally as the default.
 
 ## Development
 
@@ -168,14 +205,16 @@ Dependencies are managed with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv sync                        # create .venv and install PySide6 + Heino Reader
-uv run heinoreader file.md     # run from the synced environment
-uv run pytest                  # run the test suite
+uv run heino-reader file.md     # run from the synced environment
+uv run python -m pytest        # run the test suite
 ```
 
-QtWebEngine comes with `pyside6-addons` (installed by the `PySide6`
-meta-package). It is imported on demand only, so the default Qt preview
-also runs without it; the test suite sets the headless Chromium flags
-itself.
+The app depends on `pyside6-essentials` only. QtWebEngine lives in
+`pyside6-addons` and is exposed as the optional extra `web`
+(`pip install "heino-reader[web]"`), so the plugin is imported on demand
+only. The `dev` dependency group pulls in `pyside6-addons` so the test
+suite can exercise both backends; the test suite sets the headless
+Chromium flags itself.
 
 PySide6 is pinned to `<6.12`: 6.12.0 has a refcount crash in Qt's
 syntax highlighter that triggers on scrolling, independent of this code.
@@ -188,11 +227,11 @@ uv run python scripts/check_pyside6_crash.py
 ## Project layout
 
 ```
-src/heinoreader/      the package
+src/HeinoReader/      the package
   __init__.py           entry point (main) and public re-exports
   window.py             the viewer window: menus, toolbars, edit mode
   icons.py              toolbar icons (Material SVGs, theme fallbacks)
-  __main__.py           enables python -m heinoreader
+  __main__.py           enables python -m HeinoReader
   preview.css           the preview theme (edit freely)
   render.py             markdown to HTML, path helpers
   webview.py            QtWebEngine preview backend (opt-in, lazy import)
@@ -216,6 +255,22 @@ main.py               entry point for PyInstaller builds
 ```
 
 The `editor/` subpackage is self-contained: it imports only Qt and its
-own sibling modules, never the top-level `heinoreader` module, so there are
+own sibling modules, never the top-level package, so there are
 no circular imports. `__init__.py` re-exports the editor pieces; the editor
 widget itself is only built when edit mode is opened.
+
+## Naming
+
+- **Heino Reader** — the product name, with a space: prose, README, UI text,
+  window title, About dialog, `Name=` in the desktop entry.
+- **heino-reader** — machine names that cannot hold spaces or capitals: the
+  repository, the PyPI project, the console script, the `.desktop` file name,
+  the XDG directories (`~/.config/heino-reader`), the icon name and
+  `StartupWMClass`.
+- **HeinoReader** — the Python package and import name only, because a hyphen
+  is not legal in an identifier.
+- **HEINO_READER_CONFIG_DIR** — the environment variable.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 SpotlightOn.
