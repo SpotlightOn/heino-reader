@@ -850,7 +850,8 @@ class ViewerWindow(QMainWindow):
                 self._source.hide()
             self._restore_pre_edit_geometry()
             # Leaving edit mode exposes the preview: skip the debounce wait.
-            self._flush_pending_render()
+            if self._render_timer.isActive():
+                self._render_now()
         self._update_save_action()
 
     def _widen_for_edit(self) -> None:
@@ -926,11 +927,6 @@ class ViewerWindow(QMainWindow):
         """
         self._render_timer.stop()
         self._render()
-
-    def _flush_pending_render(self) -> None:
-        """Render now only if a debounced update is still waiting."""
-        if self._render_timer.isActive():
-            self._render_now()
 
     @Slot(str)
     def _on_file_changed(self, path: str) -> None:

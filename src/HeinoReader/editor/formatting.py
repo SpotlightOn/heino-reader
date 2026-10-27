@@ -191,7 +191,7 @@ def set_heading(cursor: QTextCursor, level: int) -> None:
             level = 0  # everything is already at this level: toggle off
 
     cursor.beginEditBlock()
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         plain = HEADING_RE.sub("", text, count=1)
@@ -223,7 +223,7 @@ def toggle_list(cursor: QTextCursor, ordered: bool = False) -> None:
 
     cursor.beginEditBlock()
     index = 0
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         index += 1
@@ -251,7 +251,7 @@ def toggle_quote(cursor: QTextCursor) -> None:
     removing = bool(content) and all(QUOTE_RE.match(text) for text in content)
 
     cursor.beginEditBlock()
-    for block, text in zip(blocks, texts):
+    for block, text in zip(blocks, texts, strict=True):
         if not text.strip():
             continue
         if removing:

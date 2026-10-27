@@ -71,7 +71,7 @@ def _quote_close_qt(_renderer, tokens, index, options, env) -> str:
     return "</td></tr></table>\n"
 
 
-def _make_parser(qt: bool) -> MarkdownIt:
+def _make_parser(*, qt: bool) -> MarkdownIt:
     parser = MarkdownIt("commonmark", {"html": True}).enable("table")
     parser.add_render_rule(
         "fence", _highlighted_fence_qt if qt else _highlighted_fence
@@ -155,7 +155,7 @@ def preview_body_point_size(css: str | None = None) -> float:
     return value / _CSS_PX_PER_PT
 
 
-def preview_line_height(heading: bool = False, css: str | None = None) -> float | None:
+def preview_line_height(*, heading: bool = False, css: str | None = None) -> float | None:
     """CSS ``line-height`` of headings or body text, as a factor.
 
     CSS multiplies the font size (``1.55`` = 1.55 × font size); Qt reads the
@@ -177,7 +177,7 @@ def preview_line_height(heading: bool = False, css: str | None = None) -> float 
     return value
 
 
-def markdown_to_html(text: str, qt: bool = False) -> str:
+def markdown_to_html(text: str, *, qt: bool = False) -> str:
     """Render a markdown document to an HTML fragment.
 
     ``qt=True`` produces markup for the QTextEdit backend (code lines joined
