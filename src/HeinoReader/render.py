@@ -9,30 +9,19 @@ styling options are too limited for a faithful preview.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 
 from markdown_it import MarkdownIt
-from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import TextLexer, get_lexer_by_name
-from pygments.util import ClassNotFound
 
-# Pygments token colors for fenced code, kept in the same stylesheet.
-_CODE_STYLE = "friendly"
+from .highlighting import highlight_body
 
-_code_formatter = HtmlFormatter(nowrap=True, cssclass="codehilite", style=_CODE_STYLE)
 
 # CommonMark (the GitHub flavor for the tested constructs) plus tables.
 def _highlighted_fence(_renderer, tokens, index, options, env) -> str:
-    """Render a fenced code block with Pygments; unknown languages stay plain."""
-    token = tokens[index]
-    words = token.info.strip().split()
-    try:
-        lexer = get_lexer_by_name(words[0]) if words else TextLexer()
-    except ClassNotFound:
-        lexer = TextLexer()
-    body = highlight(token.content, lexer, _code_formatter).rstrip("\n")
+    """Render a fenced code block; unknown languages stay plain."""
+    body = highlight_body(tokens[index].content, tokens[index].info)
     return f'<pre class="codehilite"><code>{body}</code></pre>\n'
 
 
@@ -58,13 +47,7 @@ def _highlighted_fence_qt(_renderer, tokens, index, options, env) -> str:
     separate background for each, which shows up as one grey bar per line.
     A single block (``<br>``) keeps the background continuous.
     """
-    token = tokens[index]
-    words = token.info.strip().split()
-    try:
-        lexer = get_lexer_by_name(words[0]) if words else TextLexer()
-    except ClassNotFound:
-        lexer = TextLexer()
-    body = highlight(token.content, lexer, _code_formatter).rstrip("\n")
+    body = highlight_body(tokens[index].content, tokens[index].info)
     return _code_block_qt(body.replace("\n", "<br>"))
 
 
@@ -121,6 +104,7 @@ _CSS_RULE_RE = re.compile(r"([^{}]+)\{([^}]*)\}")
 _HEADING_SELECTORS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
 
+@lru_cache(maxsize=8)
 def _declarations(css: str, selectors: frozenset[str]) -> str:
     """All declarations of every rule whose selector list names one of them.
 
@@ -128,6 +112,9 @@ def _declarations(css: str, selectors: frozenset[str]) -> str:
     a browser would apply them. ``preview.css`` opens with
     ``html, body { margin: 0; padding: 0 }`` before the real body rule, and
     both have to be taken into account.
+
+    Cached: the stylesheet is a module constant, yet these helpers are called
+    several times per render and per zoom step.
     """
     blocks = [
         declarations

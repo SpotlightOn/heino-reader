@@ -7,7 +7,7 @@ import sys
 from importlib.util import find_spec
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, Slot
+from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -69,6 +69,11 @@ TOOLBAR_STYLE = """
 # panes do not get cramped; on smaller screens it is clamped to the usable
 # screen width. Leaving edit mode restores the previous size.
 EDIT_MODE_WIDTH = 1200
+
+# Wait this long after the last keystroke before the preview re-renders.
+# One render per short note is cheap, but a long document costs real time and
+# typing does not need a fresh preview per character.
+LIVE_PREVIEW_DELAY_MS = 200
 
 # Keep in sync with pyproject.toml.
 VERSION = "0.2.1"
@@ -227,6 +232,12 @@ class ViewerWindow(QMainWindow):
 
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._on_file_changed)
+
+        # The live preview is debounced; see _source_edited.
+        self._render_timer = QTimer(self)
+        self._render_timer.setSingleShot(True)
+        self._render_timer.setInterval(LIVE_PREVIEW_DELAY_MS)
+        self._render_timer.timeout.connect(self._render)
 
         self.setAcceptDrops(True)
         self.resize(800, 900)
@@ -518,7 +529,7 @@ class ViewerWindow(QMainWindow):
             return
         if self._write(path):
             self._adopt_path(path)
-            self._render()
+            self._render_now()
 
     def _write(self, path: Path) -> bool:
         """Write the edit buffer to ``path``; False when that fails."""
@@ -579,7 +590,7 @@ class ViewerWindow(QMainWindow):
         """Allow or forbid downloading remote images, then re-render."""
         self.viewer.set_remote_images_enabled(enabled)
         self._settings.set_bool(REMOTE_IMAGES_KEY, enabled)
-        self._render()
+        self._render_now()
 
     @Slot(bool)
     def _set_web_preview(self, enabled: bool) -> None:
@@ -626,7 +637,7 @@ class ViewerWindow(QMainWindow):
         self._web_preview_action.blockSignals(True)
         self._web_preview_action.setChecked(kind == RENDERER_WEB)
         self._web_preview_action.blockSignals(False)
-        self._render()
+        self._render_now()
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar(self)
@@ -838,6 +849,8 @@ class ViewerWindow(QMainWindow):
             if self._source is not None:
                 self._source.hide()
             self._restore_pre_edit_geometry()
+            # Leaving edit mode exposes the preview: skip the debounce wait.
+            self._flush_pending_render()
         self._update_save_action()
 
     def _widen_for_edit(self) -> None:
@@ -869,11 +882,16 @@ class ViewerWindow(QMainWindow):
 
     @Slot()
     def _source_edited(self) -> None:
-        """Live-update the preview while the source is edited."""
+        """Live-update the preview while the source is edited.
+
+        The text is taken over immediately — saving must not lag behind — but
+        the preview waits for the typing to pause, so a keystroke no longer
+        costs a full render.
+        """
         if self._source is None:
             return
         self._markdown = self._source.toPlainText()
-        self._render()
+        self._render_timer.start()
 
     # -------------------------------------------------------------- files
 
@@ -894,11 +912,25 @@ class ViewerWindow(QMainWindow):
             self._source.setPlainText(text)
             self._source.blockSignals(False)
         self._adopt_path(path)
-        self._render()
+        self._render_now()
         return True
 
     def _render(self) -> None:
         self.viewer.set_markdown(self._markdown)
+
+    def _render_now(self) -> None:
+        """Render at once, dropping a pending live-preview update.
+
+        Used wherever a stale preview would be visible: opening a file,
+        switching the backend, changing the remote-image setting.
+        """
+        self._render_timer.stop()
+        self._render()
+
+    def _flush_pending_render(self) -> None:
+        """Render now only if a debounced update is still waiting."""
+        if self._render_timer.isActive():
+            self._render_now()
 
     @Slot(str)
     def _on_file_changed(self, path: str) -> None:

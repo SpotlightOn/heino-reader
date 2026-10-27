@@ -370,6 +370,21 @@ def test_edit_mode_updates_preview_live(qtbot, window):
     assert window._markdown == window._source.toPlainText()
 
 
+def test_edit_mode_renders_after_the_typing_pause(qtbot, window):
+    """The preview is debounced, not dropped: it catches up when typing stops."""
+    edit_action(window).trigger()
+    qtbot.keyClicks(window._source, "# Fresh Heading")
+    qtbot.waitUntil(lambda: "Fresh Heading" in preview_text(window), timeout=3000)
+
+
+def test_leaving_edit_mode_renders_pending_edits_at_once(qtbot, window):
+    edit_action(window).trigger()
+    qtbot.keyClicks(window._source, "# Fresh Heading")
+    assert window._render_timer.isActive()
+    edit_action(window).trigger()  # back to the full-width preview
+    assert "Fresh Heading" in preview_text(window)
+
+
 def test_zoom_indicator_updates(window):
     labels = window.findChildren(QLabel)
     assert len(labels) == 1

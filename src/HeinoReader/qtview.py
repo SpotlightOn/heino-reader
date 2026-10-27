@@ -196,6 +196,8 @@ class QtMarkdownView(QTextEdit):
 
     def _apply_remote_images(self) -> None:
         """Attach cached, placeholder or in-flight resources for remote images."""
+        if not self._has_images:
+            return
         document = self.document()
         block = document.begin()
         while block.isValid():
