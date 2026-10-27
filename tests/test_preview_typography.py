@@ -35,9 +35,10 @@ def test_body_size_is_converted_from_the_stylesheet():
 
 
 def test_families_come_from_the_stylesheet():
-    families = HeinoReader.preview_font_families()
-    assert families[0] == "Noto Sans"
-    assert all('"' not in family for family in families)
+    """A generic family, so every platform resolves it without extra fonts."""
+    assert HeinoReader.preview_font_families() == ["sans-serif"]
+    resolved = QFontInfo(preview_font()).family()
+    assert resolved, "sans-serif must resolve to a real font"
 
 
 def test_stylesheet_keeps_its_css_pixels_for_the_web_backend():

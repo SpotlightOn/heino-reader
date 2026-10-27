@@ -27,6 +27,11 @@ file and handed to `QTextDocument.setDefaultFont()` as a **point** size
 because `setHtml()` parses a fragment without a `<body>` element, so a
 `body { … }` rule never matches.
 
+The family is the generic `sans-serif`, which every platform resolves without
+installing anything; the editor uses Qt's system fixed font the same way. A
+font chooser is planned, so a concrete family will become a user setting rather
+than something guessed here.
+
 Points matter here: Qt scales point sizes with the screen DPI, while CSS pixel
 sizes are DPI blind inside `QTextDocument`. The preview therefore looks the same
 size as the rest of the desktop at 96, 144 or any other DPI, and zoom just
