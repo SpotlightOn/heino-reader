@@ -6,6 +6,7 @@
 
 - Source editor: Enter continues quote and list markers, empty items end them.
 - Toolbar lists, quote and heading start on an empty line.
+- Editor: Undo, Redo, toolbar buttons.
 
 ### Changed
 

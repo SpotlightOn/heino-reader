@@ -385,6 +385,85 @@ def test_leaving_edit_mode_renders_pending_edits_at_once(qtbot, window):
     assert "Fresh Heading" in preview_text(window)
 
 
+# ------------------------------------------------------------- undo and redo
+
+
+def test_undo_and_redo_lead_the_format_toolbar(window):
+    edit_action(window).trigger()
+    actions = format_toolbar(window).actions()
+    assert [action.text() for action in actions[:2]] == ["Undo", "Redo"]
+    assert actions[2].isSeparator(), "the history is set off from formatting"
+    texts = [action.text() for action in actions]
+    assert texts.index("Bold") > texts.index("Redo")
+    assert actions[0].shortcut().toString() == "Ctrl+Z"
+    assert "Ctrl+Y" in [key.toString() for key in actions[1].shortcuts()]
+
+
+def test_undo_and_redo_are_disabled_outside_edit_mode(window):
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+
+def test_undo_and_redo_follow_the_editor_history(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    original = source.toPlainText()
+    assert not window._undo_action.isEnabled()
+
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText(" appended")
+    assert window._undo_action.isEnabled()
+
+    window._undo_action.trigger()
+    assert source.toPlainText() == original
+    assert window._redo_action.isEnabled()
+
+    window._redo_action.trigger()
+    assert source.toPlainText() == original + " appended"
+
+
+def test_a_new_change_after_undo_clears_redo(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("one")
+    window._undo_action.trigger()
+    cursor = source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("two")
+    assert not window._redo_action.isEnabled()
+
+
+def test_formatting_is_one_undo_step(qtbot, window):
+    edit_action(window).trigger()
+    source = window._source
+    source.setPlainText("Title")
+    _select(source, 0, 5)
+    qtbot.keyClick(source, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
+    assert source.toPlainText() == "# Title"
+
+    window._undo_action.trigger()
+    assert source.toPlainText() == "Title"
+
+
+def test_opening_another_file_clears_the_history(qtbot, window, tmp_path):
+    """The same text in another file must not undo into the previous one."""
+    edit_action(window).trigger()
+    cursor = window._source.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.insertText("more")
+    assert window._undo_action.isEnabled()
+
+    other = tmp_path / "other.md"
+    other.write_text(window._source.toPlainText(), encoding="utf-8")
+    window.open(other)
+
+    assert not window._undo_action.isEnabled()
+    assert not window._redo_action.isEnabled()
+
+
 def test_zoom_indicator_updates(window):
     labels = window.findChildren(QLabel)
     assert len(labels) == 1
@@ -687,8 +766,8 @@ def test_format_toolbar_buttons_have_icons_and_tooltips(window):
         for action in format_toolbar(window).actions()
         if not action.isSeparator() and not isinstance(action, QWidgetAction)
     ]
-    assert len(buttons) == 11, (
-        "bold..code, quote, bullet, numbered, link, image, table"
+    assert len(buttons) == 13, (
+        "undo, redo, bold..code, quote, bullet, numbered, link, image, table"
     )
     assert all(not action.icon().isNull() for action in buttons)
     assert all("(" in action.toolTip() for action in buttons), (

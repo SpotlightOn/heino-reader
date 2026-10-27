@@ -315,6 +315,34 @@ class ViewerWindow(QMainWindow):
         """Create the markdown formatting actions (menu + format toolbar)."""
         self._format_actions: list[QAction] = []
 
+        # Undo and Redo start the format toolbar, but are not formatting
+        # actions: they follow the editor's history instead of edit mode.
+        self._undo_action = QAction(
+            _icon("undo", ["edit-undo"], glyph="\N{ANTICLOCKWISE OPEN CIRCLE ARROW}"),
+            "Undo",
+            self,
+        )
+        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo_action.setToolTip("Undo (Ctrl+Z)")
+        self._undo_action.setEnabled(False)
+        self._undo_action.triggered.connect(self._undo)
+
+        self._redo_action = QAction(
+            _icon("redo", ["edit-redo"], glyph="\N{CLOCKWISE OPEN CIRCLE ARROW}"),
+            "Redo",
+            self,
+        )
+        # Ctrl+Y on top of the platform shortcut, which is Ctrl+Shift+Z.
+        self._redo_action.setShortcuts(
+            [
+                QKeySequence(QKeySequence.StandardKey.Redo),
+                QKeySequence("Ctrl+Y"),
+            ]
+        )
+        self._redo_action.setToolTip("Redo (Ctrl+Shift+Z, Ctrl+Y)")
+        self._redo_action.setEnabled(False)
+        self._redo_action.triggered.connect(self._redo)
+
         def add(text, icon_name, theme_names, shortcut, func, *args, glyph=""):
             action = QAction(_icon(icon_name, theme_names, glyph=glyph), text, self)
             action.setShortcut(QKeySequence(shortcut))
@@ -549,18 +577,40 @@ class ViewerWindow(QMainWindow):
             self._watcher.removePaths(watched)
         self._watcher.addPath(str(path))
         self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader")
-        self._update_save_action()
+        self._update_edit_actions()
 
-    def _update_save_action(self) -> None:
-        """Saving is available only while editing."""
+    def _update_edit_actions(self) -> None:
+        """Match saving, undo/redo and formatting to the current mode.
+
+        All of it needs the source editor, so all of it follows edit mode.
+        """
         editing = self._edit_action.isChecked()
         self._save_action.setEnabled(editing and self._path is not None)
         self._save_as_action.setEnabled(editing)
+        document = self._source.document() if self._source is not None else None
+        self._undo_action.setEnabled(
+            editing and document is not None and document.isUndoAvailable()
+        )
+        self._redo_action.setEnabled(
+            editing and document is not None and document.isRedoAvailable()
+        )
         # Formatting only makes sense while editing, so the format toolbar
         # appears with edit mode and its actions become enabled.
         self._format_toolbar.setVisible(editing)
         for action in self._format_actions:
             action.setEnabled(editing)
+
+    @Slot()
+    def _undo(self) -> None:
+        """Undo the last change in the source editor."""
+        if self._source is not None:
+            self._source.undo()
+
+    @Slot()
+    def _redo(self) -> None:
+        """Redo the last undone change in the source editor."""
+        if self._source is not None:
+            self._source.redo()
 
     @Slot()
     def _about(self) -> None:
@@ -744,6 +794,10 @@ class ViewerWindow(QMainWindow):
         self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
+        toolbar.addAction(self._undo_action)
+        toolbar.addAction(self._redo_action)
+        toolbar.addSeparator()
+
         for action in (
             self._bold_action,
             self._italic_action,
@@ -823,6 +877,9 @@ class ViewerWindow(QMainWindow):
         )
         source.document().setDocumentMargin(DOCUMENT_MARGIN)
         source.textChanged.connect(self._source_edited)
+        # Undo/redo actions follow the editor's history instead of guessing.
+        source.undoAvailable.connect(self._update_edit_actions)
+        source.redoAvailable.connect(self._update_edit_actions)
         # Line numbers are optional; the gutter is created with the editor
         # and attached only if the View menu asks for it.
         self._line_numbers = LineNumberGutter(source)
@@ -852,7 +909,7 @@ class ViewerWindow(QMainWindow):
             # Leaving edit mode exposes the preview: skip the debounce wait.
             if self._render_timer.isActive():
                 self._render_now()
-        self._update_save_action()
+        self._update_edit_actions()
 
     def _widen_for_edit(self) -> None:
         """Widen the window for the split view, up to EDIT_MODE_WIDTH.
@@ -907,11 +964,16 @@ class ViewerWindow(QMainWindow):
             print(f"heino-reader: cannot read {path}: {error}", file=sys.stderr)
             return False
         self._markdown = text
+        previous = self._path
         # The editor may not exist yet; it picks up _markdown when created.
-        if self._source is not None and self._source.toPlainText() != text:
+        replaced = self._source is not None and self._source.toPlainText() != text
+        if replaced:
             self._source.blockSignals(True)
             self._source.setPlainText(text)
             self._source.blockSignals(False)
+        if self._source is not None and (replaced or path != previous):
+            # A document must never be undoable into the one opened before it.
+            self._source.document().clearUndoRedoStacks()
         self._adopt_path(path)
         self._render_now()
         return True

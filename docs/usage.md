@@ -39,6 +39,9 @@ it. The window splits: markdown source on the left, live preview on the right.
   numbered list.
 - Every formatting command is a toggle: applied to text that already carries the
   marker, it removes it again. Each command is a single undo step.
+- **Undo** and **Redo** start the second toolbar row (or `Ctrl+Z`,
+  `Ctrl+Shift+Z`, `Ctrl+Y`); both are greyed out while there is nothing to
+  undo or redo. The preview is read-only, so it has no history of its own.
 - The block commands (quote, both lists, headings) also work on an empty line:
   the marker is inserted and the cursor lands behind it, so the next keystroke
   is already inside the block. A list started that way continues the one above
@@ -72,6 +75,13 @@ Viewing:
 | `Ctrl+Shift+S` | Save as… (edit mode) |
 | `Ctrl+W` | Close the file |
 | `Ctrl+Q` | Quit |
+
+Editing (edit mode only):
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 
 Formatting (edit mode only):
 
