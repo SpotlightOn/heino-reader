@@ -8,9 +8,10 @@ images natively and does not need this module.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QRect, Qt, QUrl, Signal
+from PySide6.QtCore import QByteArray, QObject, QRect, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PySide6.QtSvg import QSvgRenderer
 
 REMOTE_SCHEMES = ("http://", "https://")
 
@@ -18,6 +19,29 @@ REMOTE_SCHEMES = ("http://", "https://")
 def is_remote(url: str) -> bool:
     """True for image URLs that have to be downloaded."""
     return url.startswith(REMOTE_SCHEMES)
+
+
+def svg_to_image(data: bytes) -> QImage:
+    """Render SVG bytes to an image; QImage cannot decode SVG on its own.
+
+    Badges (shields.io and friends) are SVG, so without this fallback the
+    Qt backend could only ever show their "image unavailable" placeholder.
+    QSvgRenderer draws statically, so remote SVGs cannot run scripts.
+    """
+    renderer = QSvgRenderer(QByteArray(data))
+    if not renderer.isValid():
+        return QImage()
+    size = renderer.defaultSize()
+    if size.isEmpty():
+        size = renderer.viewBoxF().size().toSize()
+    if size.isEmpty():
+        return QImage()
+    image = QImage(size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    renderer.render(painter)
+    painter.end()
+    return image
 
 
 def placeholder_image(url: str, width: int = 420, height: int = 96) -> QImage:
@@ -103,11 +127,12 @@ class RemoteImageLoader(QObject):
 
     def _finished(self, reply: QNetworkReply, url: str) -> None:
         self._pending.discard(url)
-        image = QImage()
         ok = reply.error() == QNetworkReply.NetworkError.NoError
-        if ok:
-            image.loadFromData(bytes(reply.readAll()))
+        data = bytes(reply.readAll()) if ok else b""
         reply.deleteLater()
+        image = QImage()
+        if data and not image.loadFromData(data):
+            image = svg_to_image(data)
         if image.isNull():
             self.failed.emit(url)
         else:
