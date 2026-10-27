@@ -9,7 +9,7 @@ QTextDocument. Everything else (heading scale, emphasis) is Qt's own.
 from __future__ import annotations
 
 import pytest
-from PySide6.QtGui import QFontMetricsF
+from PySide6.QtGui import QFontInfo, QFontMetricsF
 from PySide6.QtWidgets import QApplication
 
 import HeinoReader
@@ -150,11 +150,21 @@ def test_line_height_parsing(css, expected_body, expected_heading):
 def test_body_blocks_use_the_css_line_height(view):
     """Qt's percentage is re-referenced to the font size, not used as parsed.
 
-    Qt reads ``line-height: 1.55`` as 155 % of the font's natural line height;
-    the block format therefore holds a converted value well below 155.
+    Qt reads ``line-height: 1.55`` as 155 % of the font's natural line height,
+    so the block format holds the corrected percentage. That correction comes
+    from the font metrics: a machine without the theme font falls back to
+    another one and gets another number, which is exactly the intent. The
+    expected value is therefore derived here instead of hard-coded — Noto Sans
+    gives ~114 %, DejaVu Sans ~133 %.
     """
+    font = view.document().defaultFont()
+    natural = QFontMetricsF(font).height()
+    pixel = QFontInfo(font).pixelSize()
+    assert natural > 0 and pixel > 0
+
     percent = _block_formats(view)["Body text."].lineHeight()
-    assert 100 < percent < 130
+    assert percent == pytest.approx(1.55 * pixel / natural * 100, abs=0.01)
+    assert percent != pytest.approx(155.0), "the raw CSS number must not reach Qt"
 
 
 def test_heading_line_height_differs_from_the_body_one(view):
