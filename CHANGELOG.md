@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Source editor: Enter continues quote and list markers, empty items end them.
+- Toolbar lists, quote and heading start on an empty line.
+
+### Fixed
+
+- Qt preview on HiDPI: font size and line spacing now follow `preview.css`.
+
 ## [0.2.1] - 2026-10-27
 
 ### Changed
