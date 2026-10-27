@@ -1,275 +1,66 @@
-# Heino Reader
+<p align="center">
+  <img src="https://raw.githubusercontent.com/SpotlightOn/heino-reader/main/src/HeinoReader/icon.svg" width="112" alt="Heino Reader icon">
+</p>
 
-[![CI](https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/heino-reader)](https://pypi.org/project/heino-reader/)
-[![Python versions](https://img.shields.io/pypi/pyversions/heino-reader)](https://pypi.org/project/heino-reader/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Qt for Python](https://img.shields.io/badge/Qt_for_Python-PySide6-41cd52)](https://doc.qt.io/qtforpython-6/)
+<h1 align="center">Heino Reader</h1>
+
+<p align="center">
+  <a href="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml"><img src="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/heino-reader/"><img src="https://img.shields.io/pypi/v/heino-reader?style=flat" alt="PyPI"></a>
+  <a href="https://pypi.org/project/heino-reader/"><img src="https://img.shields.io/pypi/pyversions/heino-reader?style=flat" alt="Python versions"></a>
+  <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/Qt_for_Python-PySide6-41cd52" alt="Qt for Python"></a>
+  <a href="https://socket.dev/pypi/package/heino-reader"><img src="https://socket.dev/api/badge/pypi/package/heino-reader" alt="Socket: supply-chain score"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/SpotlightOn/heino-reader" alt="License: MIT"></a>
+</p>
 
 A fast document viewer for markdown files, built with PySide6.
 
-Heino Reader is named after Heino – Heinz Georg Kramm, a German singer who
-turned his blond mane, black sunglasses and "Blau blüht der Enzian" into a
+Heino Reader is named after [Heino – Heinz Georg Kramm](https://de.wikipedia.org/wiki/Heino),
+a German singer who turned his blond mane, black sunglasses and "Blau blüht der Enzian" into a
 decades-long fixture of German television. Known for constantly reinventing
-himself, he even covered Rammstein songs. Consider it an homage: dark glasses
-on, no fuss, just the text.
+himself, he even [covered Rammstein songs](https://www.youtube.com/watch?v=uVZ__cDE0EI). Consider it an homage: dark glasses on, no fuss, just the text. 😎
 
-Heino Reader renders markdown read-only: `markdown-it-py` (CommonMark plus
-tables) converts it to HTML, Pygments highlights code blocks, and Qt's rich
-text engine paints the result with a stylesheet theme. A QtWebEngine backend
-is available as an opt-in: it is the better but slower renderer with full
-HTML/CSS fidelity (see [Two preview backends](#two-preview-backends)). It can
-be started with a file path, so it can be bound to the `.md` extension in file
-managers like Dolphin.
+Rendering is read-only: `markdown-it-py` turns CommonMark plus tables into
+HTML, Pygments colors the code, a stylesheet theme sets the look. The optional
+Web Engine backend is the better but slower renderer with full CSS fidelity
+([details](docs/renderers.md)). Assign `.md` to Heino Reader in Dolphin and your
+notes open with a double click.
 
-## Features
+```sh
+heino-reader notes.md
+```
 
-- CommonMark rendering with a GitHub-style theme: headings, nested lists,
-  tables, block quotes, inline and fenced code with Pygments syntax colors.
-  The theme is a plain stylesheet: `src/HeinoReader/preview.css`
-- Code blocks and quotes are framed with a border, a background and real
-  inner padding; blocks keep their distance to the text above and below
-- Two preview backends, switchable at runtime (**View → Web Engine
-  Preview**) or via `--renderer qt|web` (default `qt`). The `qt` backend
-  uses QTextEdit, starts instantly and is limited by Qt's small CSS subset.
-  QtWebEngine is the **better but slower** renderer: tables, borders and
-  backgrounds follow the CSS exactly, but it has to start Chromium and
-  needs a bigger install. It ships in the optional `web` extra
-  (`pip install "heino-reader[web]"`, `PySide6-Addons` from
-  <https://pypi.org/project/PySide6-Addons/>), because `pyside6-addons`
-  costs 439 MB installed
-- Fast start: only what is needed is loaded. The Qt preview starts without
-  Chromium, and the whole editor stack (source pane, syntax highlighter,
-  line-number gutter) is created on the first click on **Edit mode**
-- The start screen shows the app icon and a short guide: open, edit, zoom,
-  remote images and the WebEngine switch
-- Top toolbar with button-style icons: `text_decrease` and
-  `text_increase` scale the font size, `edit` toggles edit mode,
-  `exit_to_app` closes the window, plus a zoom level indicator (e.g.
-  `130%`) that is always visible in the right corner
-- Content is inset and the text column is capped at 760 px and centred,
-  so it never touches the window edges and lines stay readable
-- Standard menu bar: **File → Open… / Save / Save As… / Close**,
-  **View → …**, **Help → About**; saving is enabled in edit mode only
-- Edit mode toggle: splits the window with the markdown source on the
-  left and a live preview on the right (like Ghostwriter); clicking the
-  button again returns to the default preview-only view. Entering edit
-  mode widens the window up to 1200 px (clamped to the usable screen
-  width, so it never grows beyond the display) and leaving it restores
-  the previous size and position
-- Markdown formatting in edit mode: a second toolbar row (bold, italic,
-  underline, strikethrough, inline code, heading dropdown, block quote,
-  bullet and numbered list) appears only while editing; every command
-  also has a keyboard shortcut
-- Insert elements from dialogs: **Link** (`Ctrl+K`) wraps the selection
-  in `[label](url)`, **Image** (`Ctrl+Shift+I`) picks a file via a
-  chooser and stores it relative to the document, **Table**
-  (`Ctrl+Shift+T`) asks for rows and columns and inserts a ready-made
-  skeleton with the first header cell selected
-- The source pane is a real code editor: markdown syntax highlighting,
-  Tab / Shift+Tab indent whole lines, and Enter continues at the text's
-  indentation (so quotes, lists and indented blocks stay aligned); a
-  block quote bar marks lines that start with `>`
-- Line numbers are optional: **View → Line Numbers** attaches a gutter
-  on demand; the editor works fine without it
-- Links open with the system default application (xdg-open)
-- Live reload when the opened file changes on disk
-- Relative image and link paths resolve against the markdown file's
-  directory (code blocks stay untouched)
-- Images scale down to the available width (aspect ratio preserved) and
-  refit when the window is resized, so wide images never break the layout
-- Remote images (`http(s)`) are downloaded asynchronously and cached;
-  **View → Load Remote Images** turns the network access off, and any
-  image that is disabled or fails to load shows a visible placeholder
-- Drag & drop a markdown file onto the window
-- Only markdown/text files are opened: an image, archive or any other
-  binary dropped on the window is refused with a message instead of being
-  loaded as text (same check for the Open dialog, the command line and a
-  file larger than 10 MB)
+## Install
 
-## Keyboard shortcuts
+```sh
+uv tool install heino-reader     # or: pipx install heino-reader
+```
 
-Viewing:
+No Python? Prebuilt AppImage, `.app` and `.exe` live on the
+[latest release](https://github.com/SpotlightOn/heino-reader/releases) page.
+Prefer everything local? `scripts/install.sh` drops a launcher in `~/.local/bin`
+without touching your system Python. None of this needs root rights.
+→ [Installation details](docs/installation.md)
 
-| Shortcut | Action |
+## Why you might like it
+
+- **Instant.** No Chromium in the default renderer — just Qt's text engine.
+- **Read-only first.** Nothing changes by accident; edit mode is one click away.
+- **Live reload.** Save in your editor, the preview follows.
+- **Split editing when you want it.** Source on the left, live preview on the
+  right — like Ghostwriter, with a formatting toolbar and shortcuts.
+- **Light.** ~260 MB installed — no Electron, no bundled browser process.
+- **Native desktop app.** Drag & drop, `.md` file association, links opened with
+  xdg-open, toolbar icons in your system colors.
+
+## Docs
+
+| Page | What's in it |
 | --- | --- |
-| `Ctrl++` / `Ctrl+-` | Zoom in / out |
-| `Ctrl+0` | Reset zoom to 100 % |
-| `Ctrl+Q` | Quit |
-| `Ctrl+O` | Open a file |
-| `Ctrl+S` | Save (edit mode) |
-| `Ctrl+Shift+S` | Save as… (edit mode) |
-| `Ctrl+W` | Close the file |
-
-Formatting (edit mode only):
-
-| Shortcut | Action | Markdown |
-| --- | --- | --- |
-| `Ctrl+B` | Bold | `**…**` |
-| `Ctrl+I` | Italic | `*…*` |
-| `Ctrl+U` | Underline | `<u>…</u>` |
-| `Ctrl+Shift+X` | Strikethrough | `~~…~~` |
-| `Ctrl+E` | Inline code | `` `…` `` |
-| `Ctrl+1` … `Ctrl+6` | Heading level 1–6 | `#` … `######` |
-| `Ctrl+Shift+0` | Plain paragraph | (clears the heading) |
-| `Ctrl+Shift+Q` | Block quote | `> ` |
-| `Ctrl+Shift+L` | Bullet list | `- ` |
-| `Ctrl+Shift+N` | Numbered list | `1. ` |
-
-Insert (edit mode only, each opens a dialog):
-
-| Shortcut | Action | Result |
-| --- | --- | --- |
-| `Ctrl+K` | Link… | `[label](url)` |
-| `Ctrl+Shift+I` | Image… | `![alt](path)` |
-| `Ctrl+Shift+T` | Table… | ready-made table skeleton |
-
-Every formatting command is a toggle: applying it to text that already
-carries the marker removes it again, and each command is a single undo
-step.
-
-## Icons
-
-Toolbar icons are bundled Material Symbols Outlined SVGs (`icons/*.svg`,
-Apache License 2.0, © Google) and are rendered with the palette text color,
-so they stay readable in light and dark themes. If a file is missing, the
-app falls back to the desktop theme icons.
-
-## Two preview backends
-
-|  | Qt text renderer (default) | Web Engine preview (optional) |
-| --- | --- | --- |
-| Engine | `QTextDocument` | QtWebEngine (Chromium) |
-| Start | instant, no Chromium process | slower, starts Chromium |
-| HTML/CSS | small subset: borders and padding only on table cells, block backgrounds repeat per line | full fidelity |
-| Install size | `pyside6-essentials`, ~260 MB | plus `pyside6-addons`, ~440 MB more |
-
-The **Web Engine preview** is the better but slower renderer: switch it on in
-**View → Web Engine Preview** or start with `--renderer web`. It needs the
-optional [PySide6-Addons](https://pypi.org/project/PySide6-Addons/) package:
-
-```sh
-pip install "heino-reader[web]"
-```
-
-Without it the menu entry stays greyed out, the app falls back to the Qt
-renderer and says so on stderr — no crash, no hidden download.
-
-## Usage
-
-```sh
-uv run heino-reader path/to/notes.md
-uv run heino-reader --renderer web path/to/notes.md   # needs the web extra
-```
-
-`uv run python -m HeinoReader path/to/notes.md` works as well (the Python
-package name cannot contain a hyphen). No argument opens the viewer with a
-short guide.
-
-## Install locally (XDG)
-
-Both scripts install into the XDG home and need no root rights. They put
-the launcher in `~/.local/bin`, the desktop entry in
-`$XDG_DATA_HOME/applications` and the icon in the XDG icon theme.
-
-With **uv** (isolated tool environment, no manual virtualenv):
-
-```sh
-scripts/install-uv.sh              # Qt renderer only, ~260 MB installed
-scripts/install-uv.sh --web        # plus QtWebEngine, ~700 MB installed
-```
-
-Without uv (private virtualenv under `$XDG_DATA_HOME/heino-reader/venv`):
-
-```sh
-scripts/install.sh                 # Qt renderer only, ~260 MB installed
-scripts/install.sh --web           # plus QtWebEngine, ~700 MB installed
-```
-
-The default install stays small on purpose. The app needs only Qt's base
-modules, which ship in `pyside6-essentials` (`QtCore`, `QtGui`,
-`QtWidgets`, `QtSvg`, `QtNetwork`). The Web Engine preview needs
-`pyside6-addons`, and that package is 439 MB installed — 195 MB of it is
-`libQt6WebEngineCore.so` alone. So `--web` is an explicit choice; without
-it **View → Web Engine Preview** is greyed out and the app falls back to
-the Qt renderer with a note on stderr.
-
-Both scripts also accept `--uninstall`. Afterwards `heino-reader` is
-available on your PATH (when `~/.local/bin` is), and you can associate
-`.md` files in Dolphin: right-click → *Open With* → *Other Application* →
-*Heino Reader*, optionally as the default.
-
-## Development
-
-Dependencies are managed with [uv](https://docs.astral.sh/uv/):
-
-```sh
-uv sync                        # create .venv and install PySide6 + Heino Reader
-uv run heino-reader file.md     # run from the synced environment
-uv run python -m pytest        # run the test suite
-```
-
-The app depends on `pyside6-essentials` only. QtWebEngine lives in
-`pyside6-addons` and is exposed as the optional extra `web`
-(`pip install "heino-reader[web]"`), so the plugin is imported on demand
-only. The `dev` dependency group pulls in `pyside6-addons` so the test
-suite can exercise both backends; the test suite sets the headless
-Chromium flags itself.
-
-PySide6 is pinned to `<6.12`: 6.12.0 has a refcount crash in Qt's
-syntax highlighter that triggers on scrolling, independent of this code.
-To check whether a newer version still has it, run:
-
-```sh
-uv run python scripts/check_pyside6_crash.py
-```
-
-## Project layout
-
-```
-src/HeinoReader/      the package
-  __init__.py           entry point (main) and public re-exports
-  window.py             the viewer window: menus, toolbars, edit mode
-  icons.py              toolbar icons (Material SVGs, theme fallbacks)
-  __main__.py           enables python -m HeinoReader
-  preview.css           the preview theme (edit freely)
-  render.py             markdown to HTML, path helpers
-  webview.py            QtWebEngine preview backend (opt-in, lazy import)
-  qtview.py             QTextEdit preview backend (default)
-  layout.py             text column geometry
-  images.py             remote image loading for the Qt backend
-  files.py              file validation (no binary/oversized files)
-  settings.py           persistent settings in the XDG config directory
-  utils.py              small shared helpers
-  editor/               the source markdown editor subsystem
-    __init__.py           public API of the subpackage
-    source_edit.py        plain-text editor, Tab indent, quote bar
-    highlighter.py        markdown syntax highlighting
-    line_numbers.py       optional line-number gutter (View menu)
-    formatting.py         GUI-free formatting operations on a cursor
-    dialogs.py            insert dialogs (link, image, table)
-  icons/                bundled Material Symbols SVGs
-tests/                pytest + pytest-qt suite
-scripts/              install scripts and the PySide6 crash check
-main.py               entry point for PyInstaller builds
-```
-
-The `editor/` subpackage is self-contained: it imports only Qt and its
-own sibling modules, never the top-level package, so there are
-no circular imports. `__init__.py` re-exports the editor pieces; the editor
-widget itself is only built when edit mode is opened.
-
-## Naming
-
-- **Heino Reader** — the product name, with a space: prose, README, UI text,
-  window title, About dialog, `Name=` in the desktop entry.
-- **heino-reader** — machine names that cannot hold spaces or capitals: the
-  repository, the PyPI project, the console script, the `.desktop` file name,
-  the XDG directories (`~/.config/heino-reader`), the icon name and
-  `StartupWMClass`.
-- **HeinoReader** — the Python package and import name only, because a hyphen
-  is not legal in an identifier.
-- **HEINO_READER_CONFIG_DIR** — the environment variable.
+| [Installation](docs/installation.md) | PyPI, local XDG install, web extra, uninstall, file association |
+| [Usage](docs/usage.md) | Menus, edit mode, insert dialogs, all keyboard shortcuts |
+| [Renderers](docs/renderers.md) | Qt text engine vs. Web Engine, feature by feature |
+| [Development](docs/development.md) | Setup, tests, project layout, naming conventions |
 
 ## License
 
