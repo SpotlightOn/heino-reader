@@ -186,6 +186,58 @@ def markdown_to_html(text: str, qt: bool = False) -> str:
     return (_qt_parser if qt else _parser).render(text)
 
 
+# A line-height declaration with its value and optional unit.
+_LINE_HEIGHT_DECL_RE = re.compile(
+    r"(?<![\w-])(line-height\s*:\s*)([\d.]+)\s*(%|px|pt)?", re.IGNORECASE
+)
+
+# Block elements whose line height has to come from an explicit rule: Qt's
+# setHtml() parses a fragment without <body>, so the body rule never matches.
+_BODY_BLOCK_SELECTORS = "p, li, dd, dt, td, th, blockquote"
+
+
+def _qt_percent(value: float, unit: str, pixel_per_natural: float) -> float:
+    """CSS line-height value as the percentage Qt expects for it.
+
+    Qt reads the number as a percentage of the font's natural line height,
+    CSS as a multiple of the font size, so the two differ by the font's
+    natural height per pixel.
+    """
+    factor = value / 100.0 if unit == "%" else value
+    return factor * pixel_per_natural * 100.0
+
+
+def qt_stylesheet(css: str | None = None, pixel_per_natural: float = 1.0) -> str:
+    """The preview stylesheet with line heights Qt can use as they are.
+
+    ``preview.css`` states line heights the CSS way (``1.55``, ``125%``). Qt
+    parses the same number as a share of the font's natural line height and
+    would render the text far too tight, so every declaration is rewritten as
+    the equivalent percentage. Fixed lengths (``px``, ``pt``) do not scale
+    with the font size and are left alone.
+
+    Because a ``body`` rule never matches in a fragment, the body line height
+    is additionally spelled out on the block elements. ``pixel_per_natural``
+    comes from the document font: ``QFontInfo.pixelSize() /
+    QFontMetricsF.height()``.
+    """
+    sheet = PREVIEW_CSS if css is None else css
+
+    def rewrite(match: re.Match[str]) -> str:
+        unit = (match.group(3) or "").lower()
+        if unit in {"px", "pt"}:
+            return match.group(0)
+        percent = _qt_percent(float(match.group(2)), unit, pixel_per_natural)
+        return f"{match.group(1)}{percent:.2f}%"
+
+    corrected = _LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)
+    body = preview_line_height(css=sheet)
+    if body is None:
+        return corrected
+    percent = _qt_percent(body, "", pixel_per_natural)
+    return f"{corrected}\n{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}"
+
+
 def render_html_document(text: str) -> str:
     """Render markdown to a complete HTML document for the web preview."""
     body = markdown_to_html(text)

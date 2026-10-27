@@ -162,6 +162,40 @@ def test_heading_line_height_differs_from_the_body_one(view):
     assert formats["Title"].lineHeight() < formats["Body text."].lineHeight()
 
 
+def test_qt_stylesheet_converts_line_heights_to_qt_percentages():
+    """CSS multiples become the percentage of natural height Qt reads."""
+    sheet = HeinoReader.qt_stylesheet(
+        "body { line-height: 1.5; } h1 { line-height: 120%; }",
+        pixel_per_natural=0.5,
+    )
+    assert "line-height: 75.00%" in sheet  # 1.5 x 0.5
+    assert "line-height: 60.00%" in sheet  # 1.2 x 0.5
+
+
+def test_qt_stylesheet_leaves_fixed_lengths_alone():
+    """A px value does not scale with the font, so Qt may keep it as it is."""
+    sheet = HeinoReader.qt_stylesheet(
+        "body { line-height: 24px; } pre { line-height: 12pt; }",
+        pixel_per_natural=0.5,
+    )
+    assert "line-height: 24px" in sheet
+    assert "line-height: 12pt" in sheet
+
+
+def test_qt_stylesheet_spells_out_the_body_line_height_on_blocks():
+    """Paragraphs would miss it otherwise: a body rule never matches a fragment."""
+    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=1.0)
+    assert "p, li, dd, dt, td, th, blockquote { line-height: 155.00% }" in sheet
+
+
+def test_qt_stylesheet_leaves_no_unitless_line_height():
+    """Qt would misread `1.55` as a share of the natural height."""
+    factor = 0.735
+    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=factor)
+    assert "line-height: 1.55" not in sheet
+    assert f"line-height: {1.55 * factor * 100:.2f}%" in sheet
+
+
 def test_wrapped_paragraph_lines_are_further_apart(qtbot):
     view = QtMarkdownView()
     qtbot.addWidget(view)

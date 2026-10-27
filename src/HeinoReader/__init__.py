@@ -44,6 +44,7 @@ from .render import (
     preview_body_point_size,
     preview_font_families,
     preview_line_height,
+    qt_stylesheet,
     render_html_document,
 )
 from .utils import open_external
@@ -96,6 +97,7 @@ __all__ = [
     "preview_body_point_size",
     "preview_font_families",
     "preview_line_height",
+    "qt_stylesheet",
     "render_html_document",
     "show_about",
     "web_engine_available",

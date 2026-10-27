@@ -40,9 +40,15 @@ Qt does parse `line-height` into the block format, but reads the number as a
 percentage of the font's *natural* line height, while CSS means it relative to
 the *font size*. `line-height: 1.55` therefore becomes a corrected percentage
 (~114 %), computed from Qt's own font metrics — the same `QFontMetricsF` and
-`QFontInfo` calls any Qt app would use, no DPI arithmetic. Blocks whose rule
-never matched (paragraphs, thanks to the missing `<body>`) get the body value
-explicitly; code blocks and headings keep the value of their own rule.
+`QFontInfo` calls any Qt app would use, no DPI arithmetic. `qt_stylesheet()`
+rewrites every declaration that way before the stylesheet reaches
+`setDefaultStyleSheet()`, and spells the body value out on the block elements,
+which would otherwise miss it (there is no `<body>` to inherit from). Code
+blocks and headings keep the value of their own rule.
+
+The document is touched exactly once, by `setHtml()`: the line heights arrive
+with the stylesheet, so nothing reformats the blocks afterwards and no second
+layout pass is needed — which is what a long document feels like while typing.
 
 One limit of the engine: `QTextBlockFormat` line heights only affect the
 spacing *between* the lines of a block. A paragraph that fits on a single line
