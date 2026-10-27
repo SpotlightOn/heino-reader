@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from heinoreader import _resolve_relative_paths, _resolve_url
+from HeinoReader import _resolve_relative_paths, _resolve_url
 
 BASE = Path("/base/dir")
 

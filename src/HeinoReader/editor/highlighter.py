@@ -1,7 +1,7 @@
 """Lightweight markdown syntax highlighting for the source editor.
 
 This module is self-contained: it depends only on Qt and the re module,
-never on the rest of the heinoreader package.
+never on the rest of the Heino Reader package.
 """
 
 from __future__ import annotations

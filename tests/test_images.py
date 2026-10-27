@@ -10,9 +10,9 @@ from PySide6.QtGui import QColor, QImage
 from PySide6.QtNetwork import QNetworkReply
 from PySide6.QtWidgets import QApplication
 
-import heinoreader
-from heinoreader import ViewerWindow
-from heinoreader.images import RemoteImageLoader, svg_to_image
+import HeinoReader
+from HeinoReader import ViewerWindow
+from HeinoReader.images import RemoteImageLoader, svg_to_image
 
 
 def make_image(path, width, height):
@@ -47,12 +47,12 @@ def make_window(qtbot, doc, renderer):
 
 @pytest.fixture
 def qt_window(qtbot, image_doc):
-    return make_window(qtbot, image_doc, heinoreader.RENDERER_QT)
+    return make_window(qtbot, image_doc, HeinoReader.RENDERER_QT)
 
 
 @pytest.fixture
 def web_window(qtbot, image_doc):
-    return make_window(qtbot, image_doc, heinoreader.RENDERER_WEB)
+    return make_window(qtbot, image_doc, HeinoReader.RENDERER_WEB)
 
 
 # ------------------------------------------------------- QTextEdit backend
@@ -74,7 +74,7 @@ def image_formats(window):
 
 
 def available_width(window):
-    content, _ = heinoreader.content_layout(window.viewer.viewport().width())
+    content, _ = HeinoReader.content_layout(window.viewer.viewport().width())
     return content
 
 
@@ -107,11 +107,11 @@ def test_qt_images_refit_when_the_window_shrinks(qtbot, qt_window):
 # ------------------------------------------------------- WebEngine backend
 
 def test_theme_limits_image_width():
-    assert "max-width: 100%" in heinoreader.PREVIEW_CSS
+    assert "max-width: 100%" in HeinoReader.PREVIEW_CSS
 
 
 def test_web_document_keeps_the_relative_image_source(web_window):
-    html = heinoreader.markdown_to_html(web_window._markdown)
+    html = HeinoReader.markdown_to_html(web_window._markdown)
     assert 'src="big.png"' in html
 
 
@@ -120,7 +120,7 @@ def test_web_preview_resolves_relative_images_via_the_base_dir(web_window, tmp_p
 
 
 def test_web_document_contains_the_theme(web_window):
-    document = heinoreader.render_html_document(web_window._markdown)
+    document = HeinoReader.render_html_document(web_window._markdown)
     assert "<style>" in document
     assert "max-width: 100%" in document
     assert "<img" in document
@@ -129,23 +129,23 @@ def test_web_document_contains_the_theme(web_window):
 # ------------------------------------------------------------ column width
 
 def test_content_layout_caps_and_centres_wide_windows():
-    content, margin = heinoreader.content_layout(1400)
-    assert content == heinoreader.MAX_CONTENT_WIDTH
-    assert margin > heinoreader.DOCUMENT_MARGIN
+    content, margin = HeinoReader.content_layout(1400)
+    assert content == HeinoReader.MAX_CONTENT_WIDTH
+    assert margin > HeinoReader.DOCUMENT_MARGIN
 
 
 def test_content_layout_uses_full_width_on_narrow_windows():
-    content, margin = heinoreader.content_layout(600)
-    assert content == 600 - 2 * heinoreader.DOCUMENT_MARGIN
-    assert margin == heinoreader.DOCUMENT_MARGIN
+    content, margin = HeinoReader.content_layout(600)
+    assert content == 600 - 2 * HeinoReader.DOCUMENT_MARGIN
+    assert margin == HeinoReader.DOCUMENT_MARGIN
 
 
 def test_content_layout_handles_zero_width():
-    assert heinoreader.content_layout(0) == (0, int(heinoreader.DOCUMENT_MARGIN))
+    assert HeinoReader.content_layout(0) == (0, int(HeinoReader.DOCUMENT_MARGIN))
 
 
 def test_qt_preview_sets_the_side_margin_from_the_layout(qt_window):
-    _, margin = heinoreader.content_layout(qt_window.viewer.viewport().width())
+    _, margin = HeinoReader.content_layout(qt_window.viewer.viewport().width())
     frame_format = qt_window.viewer.document().rootFrame().frameFormat()
     assert round(frame_format.leftMargin()) == margin
     assert round(frame_format.rightMargin()) == margin

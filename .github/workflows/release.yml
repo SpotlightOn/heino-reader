@@ -24,11 +24,13 @@ jobs:
       - name: Build executable
         run: >
           pyinstaller --noconfirm --clean --windowed --onefile
-          --name heinoreader --paths src --collect-all heinoreader main.py
+          --name heino-reader --paths src --collect-all HeinoReader main.py
+      - name: Bundle the MIT license notice
+        run: Copy-Item LICENSE dist/LICENSE
       - uses: actions/upload-artifact@v7
         with:
           name: windows-exe
-          path: dist/heinoreader.exe
+          path: dist/*
           if-no-files-found: error
 
   macos:
@@ -55,13 +57,15 @@ jobs:
       - name: Build .app bundle
         run: >
           pyinstaller --noconfirm --clean --windowed --onefile
-          --name heinoreader --target-arch ${{ matrix.arch }}
-          --paths src --collect-all heinoreader main.py
+          --name heino-reader --target-arch ${{ matrix.arch }}
+          --paths src --collect-all HeinoReader main.py
       - name: Package .app as zip
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           ditto -c -k --keepParent \
-            dist/heinoreader.app "heinoreader-${VERSION}-macos-${{ matrix.arch }}.zip"
+            dist/heino-reader.app "heino-reader-${VERSION}-macos-${{ matrix.arch }}.zip"
+          # The MIT notice travels next to the bundle.
+          zip -j "heino-reader-${VERSION}-macos-${{ matrix.arch }}.zip" LICENSE
       - uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.arch }}
@@ -92,25 +96,28 @@ jobs:
       - name: Build bundle (PyInstaller, onedir)
         run: >
           pyinstaller --noconfirm --clean
-          --name heinoreader --paths src --collect-all heinoreader main.py
+          --name heino-reader --paths src --collect-all HeinoReader main.py
       - name: Assemble AppDir
         run: |
           set -eux
           mkdir -p AppDir/usr/bin \
                    AppDir/usr/share/applications \
-                   AppDir/usr/share/icons/hicolor/256x256/apps
+                   AppDir/usr/share/icons/hicolor/256x256/apps \
+                   AppDir/usr/share/licenses/heino-reader
           # PyInstaller's onedir output is relocatable ($ORIGIN/_internal)
-          cp -a dist/heinoreader/. AppDir/usr/bin/
-          cp heinoreader.desktop AppDir/heinoreader.desktop
+          cp -a dist/heino-reader/. AppDir/usr/bin/
+          cp LICENSE AppDir/usr/share/licenses/heino-reader/LICENSE
+          cp LICENSE AppDir/LICENSE
+          cp heino-reader.desktop AppDir/heino-reader.desktop
           # Render the app icon to PNG via PySide6 (already installed):
-          QT_QPA_PLATFORM=offscreen python -c "from PySide6.QtCore import QRectF; from PySide6.QtGui import QColor, QImage, QPainter; from PySide6.QtSvg import QSvgRenderer; img = QImage(256, 256, QImage.Format.Format_ARGB32); img.fill(QColor(0, 0, 0, 0)); p = QPainter(img); QSvgRenderer(open('src/heinoreader/icon.svg', 'rb').read()).render(p, QRectF(0, 0, 256, 256)); p.end(); img.save('AppDir/heinoreader.png')"
-          cp AppDir/heinoreader.png \
-            AppDir/usr/share/icons/hicolor/256x256/apps/heinoreader.png
-          cp AppDir/heinoreader.png AppDir/.DirIcon
+          QT_QPA_PLATFORM=offscreen python -c "from PySide6.QtCore import QRectF; from PySide6.QtGui import QColor, QImage, QPainter; from PySide6.QtSvg import QSvgRenderer; img = QImage(256, 256, QImage.Format.Format_ARGB32); img.fill(QColor(0, 0, 0, 0)); p = QPainter(img); QSvgRenderer(open('src/HeinoReader/icon.svg', 'rb').read()).render(p, QRectF(0, 0, 256, 256)); p.end(); img.save('AppDir/heino-reader.png')"
+          cp AppDir/heino-reader.png \
+            AppDir/usr/share/icons/hicolor/256x256/apps/heino-reader.png
+          cp AppDir/heino-reader.png AppDir/.DirIcon
           cat > AppDir/AppRun <<'EOF'
           #!/bin/sh
           HERE="$(dirname "$(readlink -f "${0}")")"
-          exec "${HERE}/usr/bin/heinoreader" "$@"
+          exec "${HERE}/usr/bin/heino-reader" "$@"
           EOF
           chmod +x AppDir/AppRun
       - name: Build AppImage
@@ -121,7 +128,7 @@ jobs:
           chmod +x appimagetool
           VERSION="${GITHUB_REF_NAME#v}"
           APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 VERSION="$VERSION" \
-            ./appimagetool AppDir "heinoreader-${VERSION}-x86_64.AppImage"
+            ./appimagetool AppDir "heino-reader-${VERSION}-x86_64.AppImage"
       - uses: actions/upload-artifact@v7
         with:
           name: appimage

@@ -1,4 +1,4 @@
-"""Validation of files that heinoreader is willing to open.
+"""Validation of files that Heino Reader is willing to open.
 
 The viewer is a markdown reader, not a binary/hex viewer. Dropping an
 image, an archive or any other binary onto the window must not dump bytes

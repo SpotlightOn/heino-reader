@@ -6,9 +6,9 @@ import pytest
 from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-import heinoreader
-import heinoreader.window
-from heinoreader.files import is_supported_path, looks_binary, rejection_reason
+import HeinoReader
+import HeinoReader.window
+from HeinoReader.files import is_supported_path, looks_binary, rejection_reason
 
 
 @pytest.mark.parametrize(
@@ -77,7 +77,7 @@ def test_rejection_reason_rejects_directories(tmp_path):
 def window(qtbot, tmp_path):
     md = tmp_path / "notes.md"
     md.write_text("# Notes\n", encoding="utf-8")
-    window = heinoreader.ViewerWindow(md)
+    window = HeinoReader.ViewerWindow(md)
     qtbot.addWidget(window)
     window.show()
     from PySide6.QtWidgets import QApplication
@@ -111,7 +111,7 @@ def test_open_refuses_a_binary_file(window, tmp_path):
 def test_dropping_an_image_is_rejected(window, tmp_path, monkeypatch):
     warnings = []
     monkeypatch.setattr(
-        heinoreader.window.QMessageBox, "warning", staticmethod(lambda *a, **k: warnings.append(a))
+        HeinoReader.window.QMessageBox, "warning", staticmethod(lambda *a, **k: warnings.append(a))
     )
     png = tmp_path / "picture.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")

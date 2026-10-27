@@ -121,7 +121,7 @@ class RemoteImageLoader(QObject):
             QNetworkRequest.Attribute.RedirectPolicyAttribute,
             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy,
         )
-        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "heinoreader")
+        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "heino-reader")
         reply = self._manager.get(request)
         reply.finished.connect(lambda r=reply, u=url: self._finished(r, u))
 

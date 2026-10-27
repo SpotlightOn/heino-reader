@@ -6,13 +6,13 @@ import sys
 from pathlib import Path
 
 try:
-    from heinoreader import main
+    from HeinoReader import main
 except ModuleNotFoundError as error:
-    if error.name != "heinoreader":
+    if error.name != "HeinoReader":
         raise
     # Running straight from a checkout: the package lives in src/.
     sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
-    from heinoreader import main
+    from HeinoReader import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

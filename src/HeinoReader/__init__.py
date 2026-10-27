@@ -7,8 +7,8 @@ started with a file path, so it can be bound to the .md extension in file
 managers such as Dolphin.
 
 Usage:
-    heinoreader [FILE]
-    python -m heinoreader [FILE]
+    heino-reader [FILE]
+    python -m HeinoReader [FILE]
 """
 
 from __future__ import annotations
@@ -56,6 +56,7 @@ from .window import (
     ask_open_file,
     create_markdown_view,
     show_about,
+    web_engine_available,
 )
 
 __all__ = [
@@ -91,12 +92,13 @@ __all__ = [
     "open_external",
     "render_html_document",
     "show_about",
+    "web_engine_available",
 ]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="heinoreader",
+        prog="heino-reader",
         description="A fast document viewer for markdown files.",
     )
     parser.add_argument(
@@ -120,13 +122,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.file is not None:
         reason = rejection_reason(args.file)
         if reason is not None:
-            print(f"heinoreader: cannot open {args.file}: {reason}", file=sys.stderr)
+            print(f"heino-reader: cannot open {args.file}: {reason}", file=sys.stderr)
             return 2
 
     app = QApplication([sys.argv[0]])
-    app.setApplicationName("heinoreader")
+    app.setApplicationName("heino-reader")
     app.setApplicationDisplayName("Heino Reader")
-    app.setDesktopFileName("heinoreader")
+    app.setDesktopFileName("heino-reader")
     if ICON_PATH.is_file():
         app.setWindowIcon(QIcon(str(ICON_PATH)))
     window = ViewerWindow(args.file, renderer=args.renderer)

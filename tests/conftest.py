@@ -13,5 +13,5 @@ os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
 
 @pytest.fixture(autouse=True)
 def isolated_settings(tmp_path, monkeypatch):
-    """Keep the user's real ~/.config/heinoreader out of the test suite."""
-    monkeypatch.setenv("HEINOREADER_CONFIG_DIR", str(tmp_path / "config"))
+    """Keep the user's real ~/.config/heino-reader out of the test suite."""
+    monkeypatch.setenv("HEINO_READER_CONFIG_DIR", str(tmp_path / "config"))

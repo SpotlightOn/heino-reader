@@ -1,4 +1,4 @@
-"""Widget behavior tests for the heinoreader viewer (pytest-qt)."""
+"""Widget behavior tests for the Heino Reader viewer (pytest-qt)."""
 
 from pathlib import Path
 
@@ -21,11 +21,11 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-import heinoreader
-import heinoreader.icons
-import heinoreader.window
-from heinoreader import ViewerWindow, main
-from heinoreader.webview import MarkdownPage
+import HeinoReader
+import HeinoReader.icons
+import HeinoReader.window
+from HeinoReader import ViewerWindow, main
+from HeinoReader.webview import MarkdownPage
 
 
 def make_window(qtbot, path):
@@ -111,7 +111,7 @@ def test_open_menu_item_loads_file(window, tmp_path, monkeypatch):
     target.write_text("# Opened Document\n", encoding="utf-8")
     chosen = []
     monkeypatch.setattr(
-        heinoreader.window,
+        HeinoReader.window,
         "ask_open_file",
         lambda parent, start: chosen.append(start) or target,
     )
@@ -147,7 +147,7 @@ def test_save_as_writes_a_new_file_and_keeps_editing_it(
     edit_action(window).trigger()
     window._source.setPlainText("# Copy\n")
     target = tmp_path / "copy.md"
-    monkeypatch.setattr(heinoreader.window, "ask_save_file", lambda parent, start: target)
+    monkeypatch.setattr(HeinoReader.window, "ask_save_file", lambda parent, start: target)
 
     menu_action(window, "File", "Save As...").trigger()
 
@@ -163,11 +163,11 @@ def test_save_as_works_without_an_open_file(qtbot, tmp_path, monkeypatch):
     window.show()
     window._edit_action.trigger()
     target = tmp_path / "new.md"
-    monkeypatch.setattr(heinoreader.window, "ask_save_file", lambda parent, start: target)
+    monkeypatch.setattr(HeinoReader.window, "ask_save_file", lambda parent, start: target)
 
     menu_action(window, "File", "Save As...").trigger()
 
-    assert "heinoreader" in target.read_text(encoding="utf-8").lower()
+    assert "heino reader" in target.read_text(encoding="utf-8").lower()
     assert window._path == target
 
 
@@ -175,7 +175,7 @@ def test_save_as_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
     window._source.setPlainText("unchanged")
     monkeypatch.setattr(
-        heinoreader.window, "ask_save_file", lambda parent, start: None
+        HeinoReader.window, "ask_save_file", lambda parent, start: None
     )
     menu_action(window, "File", "Save As...").trigger()
     assert window._path.name == "notes.md"
@@ -214,7 +214,7 @@ def test_close_menu_item_closes_window(window):
 
 def test_about_menu_item_shows_dialog(window, monkeypatch):
     shown = []
-    monkeypatch.setattr(heinoreader.window, "show_about", lambda parent: shown.append(parent))
+    monkeypatch.setattr(HeinoReader.window, "show_about", lambda parent: shown.append(parent))
     menu_action(window, "Help", "About").trigger()
     assert shown and shown[0] is window
 
@@ -223,15 +223,15 @@ def test_about_menu_item_shows_dialog(window, monkeypatch):
 
 def test_bundled_material_icons_render(qapp):
     for name in ("text_decrease", "text_increase", "exit_to_app", "edit"):
-        assert (heinoreader.ICONS_DIR / f"{name}.svg").is_file()
-        icon = heinoreader._material_icon(name)
+        assert (HeinoReader.ICONS_DIR / f"{name}.svg").is_file()
+        icon = HeinoReader._material_icon(name)
         assert not icon.isNull()
         assert not icon.pixmap(32, 32).isNull()
 
 
 def test_missing_material_icon_falls_back_gracefully(qapp, tmp_path, monkeypatch):
-    monkeypatch.setattr(heinoreader.icons, "ICONS_DIR", tmp_path)
-    assert heinoreader._material_icon("does_not_exist").isNull()
+    monkeypatch.setattr(HeinoReader.icons, "ICONS_DIR", tmp_path)
+    assert HeinoReader._material_icon("does_not_exist").isNull()
 
 
 # ---------------------------------------------------------------- toolbar
@@ -312,7 +312,7 @@ def test_edit_mode_widens_the_window(qtbot, window):
     before = window.width()
     edit_action(window).trigger()
     assert window.width() > before, "edit mode should widen the window"
-    assert window.width() <= heinoreader.EDIT_MODE_WIDTH
+    assert window.width() <= HeinoReader.EDIT_MODE_WIDTH
     assert window.height() == 480, "only the width changes"
 
 
@@ -322,14 +322,14 @@ def test_edit_mode_never_exceeds_the_screen(qtbot, window):
     QApplication.processEvents()
     edit_action(window).trigger()
     available = window.screen().availableGeometry()
-    assert window.width() <= min(heinoreader.EDIT_MODE_WIDTH, available.width())
+    assert window.width() <= min(HeinoReader.EDIT_MODE_WIDTH, available.width())
 
 
 def test_edit_mode_never_shrinks_an_already_wide_window(qtbot, window):
-    window.resize(heinoreader.EDIT_MODE_WIDTH + 200, 480)
+    window.resize(HeinoReader.EDIT_MODE_WIDTH + 200, 480)
     QApplication.processEvents()
     edit_action(window).trigger()
-    assert window.width() == heinoreader.EDIT_MODE_WIDTH + 200
+    assert window.width() == HeinoReader.EDIT_MODE_WIDTH + 200
 
 
 def test_leaving_edit_mode_restores_the_previous_size(qtbot, window):
@@ -359,7 +359,7 @@ def test_editor_is_created_lazily_on_edit_mode(window):
     assert window._source is None
     assert window._line_numbers is None
     edit_action(window).trigger()
-    assert isinstance(window._source, heinoreader.MarkdownSourceEdit)
+    assert isinstance(window._source, HeinoReader.MarkdownSourceEdit)
     assert window._splitter.count() == 2
     assert not window._line_numbers.installed
 
@@ -406,13 +406,13 @@ def test_placeholder_is_rendered_without_a_file(qtbot):
     qtbot.addWidget(window)
     window.show()
     QApplication.processEvents()
-    assert window._markdown == heinoreader.PLACEHOLDER_MD
+    assert window._markdown == HeinoReader.PLACEHOLDER_MD
     assert "Drop a markdown file here" in preview_text(window)
 
 
 def test_viewer_uses_the_qt_renderer_by_default(window):
-    assert isinstance(window.viewer, heinoreader.QtMarkdownView)
-    assert window._renderer == heinoreader.RENDERER_QT
+    assert isinstance(window.viewer, HeinoReader.QtMarkdownView)
+    assert window._renderer == HeinoReader.RENDERER_QT
     assert not window._web_preview_action.isChecked()
 
 
@@ -462,7 +462,7 @@ def test_relative_image_uses_the_document_directory(qtbot, tmp_path):
 
     # The web engine resolves relative URLs against the document folder.
     assert window.viewer.base_dir == tmp_path
-    html = heinoreader.markdown_to_html(window._markdown)
+    html = HeinoReader.markdown_to_html(window._markdown)
     assert 'src="pic.png"' in html
 
 
@@ -472,7 +472,7 @@ def test_code_block_is_not_rewritten(qtbot, tmp_path):
         "# Doc\n\n```text\n![example](pic.png)\n```\n", encoding="utf-8"
     )
     window = make_window(qtbot, path)
-    html = heinoreader.markdown_to_html(window._markdown)
+    html = HeinoReader.markdown_to_html(window._markdown)
     assert "![example](pic.png)" in html
     assert str(tmp_path / "pic.png") not in html
 
@@ -481,14 +481,14 @@ def test_code_block_is_not_rewritten(qtbot, tmp_path):
 
 def test_relative_links_stay_relative_for_the_base_directory(window):
     assert window.viewer.base_dir == Path(window._path).parent
-    html = heinoreader.markdown_to_html(window._markdown)
+    html = HeinoReader.markdown_to_html(window._markdown)
     assert 'href="other.md"' in html
     assert 'href="https://example.org"' in html
 
 
 def test_link_click_opens_external_url(monkeypatch):
     opened = []
-    monkeypatch.setattr(heinoreader.webview, "open_external", opened.append)
+    monkeypatch.setattr(HeinoReader.webview, "open_external", opened.append)
     page = MarkdownPage()
     accepted = page.acceptNavigationRequest(
         QUrl("https://example.org"),
@@ -501,7 +501,7 @@ def test_link_click_opens_external_url(monkeypatch):
 
 def test_link_click_opens_local_file(monkeypatch, tmp_path):
     opened = []
-    monkeypatch.setattr(heinoreader.webview, "open_external", opened.append)
+    monkeypatch.setattr(HeinoReader.webview, "open_external", opened.append)
     target = tmp_path / "other.md"
     page = MarkdownPage()
     accepted = page.acceptNavigationRequest(
@@ -537,14 +537,14 @@ def layout_formats(widget, needle):
 
 def test_source_is_a_markdown_code_editor(window):
     edit_action(window).trigger()
-    assert isinstance(window._source, heinoreader.MarkdownSourceEdit)
+    assert isinstance(window._source, HeinoReader.MarkdownSourceEdit)
     assert isinstance(window._source, QPlainTextEdit)
 
 
 def test_source_has_a_highlighter(window):
     edit_action(window).trigger()
     QApplication.processEvents()
-    assert isinstance(window._source.highlighter, heinoreader.MarkdownHighlighter)
+    assert isinstance(window._source.highlighter, HeinoReader.MarkdownHighlighter)
 
 
 def test_line_numbers_are_off_by_default(window):
@@ -631,7 +631,7 @@ def test_tab_without_selection_moves_the_cursor(qtbot, window):
     source.setPlainText("ab")
     source.moveCursor(source.textCursor().MoveOperation.Start)
     qtbot.keyClick(source, Qt.Key.Key_Tab)
-    assert source.textCursor().position() == heinoreader.MarkdownSourceEdit.INDENT.__len__()
+    assert source.textCursor().position() == HeinoReader.MarkdownSourceEdit.INDENT.__len__()
 
 
 # ----------------------------------------------------------------- format
@@ -761,7 +761,7 @@ def test_insert_link_uses_the_dialog_result(window, monkeypatch):
     source = window._source
     source.setPlainText("see the docs")
     _select(source, 4, 7)  # "the"
-    monkeypatch.setattr(heinoreader.window, "ask_link_url", lambda parent, initial: "https://x.io")
+    monkeypatch.setattr(HeinoReader.window, "ask_link_url", lambda parent, initial: "https://x.io")
     insert_action(window, "Link...").trigger()
     assert source.toPlainText() == "see [the](https://x.io) docs"
 
@@ -770,7 +770,7 @@ def test_insert_link_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
     source = window._source
     source.setPlainText("keep me")
-    monkeypatch.setattr(heinoreader.window, "ask_link_url", lambda parent, initial: "")
+    monkeypatch.setattr(HeinoReader.window, "ask_link_url", lambda parent, initial: "")
     insert_action(window, "Link...").trigger()
     assert source.toPlainText() == "keep me"
 
@@ -782,7 +782,7 @@ def test_insert_image_stores_a_relative_path(window, tmp_path, monkeypatch):
     source.setPlainText("")
     image = tmp_path / "img" / "pic.png"
     monkeypatch.setattr(
-        heinoreader.window, "ask_image", lambda parent, start, alt: (str(image), "Alt")
+        HeinoReader.window, "ask_image", lambda parent, start, alt: (str(image), "Alt")
     )
     insert_action(window, "Image...").trigger()
     # Relative to doc.md's folder, so the document stays portable.
@@ -798,7 +798,7 @@ def test_insert_image_keeps_an_absolute_path_outside_the_document(
     source.setPlainText("")
     elsewhere = tmp_path.parent / "other" / "pic.png"
     monkeypatch.setattr(
-        heinoreader.window, "ask_image", lambda parent, start, alt: (str(elsewhere), "")
+        HeinoReader.window, "ask_image", lambda parent, start, alt: (str(elsewhere), "")
     )
     insert_action(window, "Image...").trigger()
     text = source.toPlainText()
@@ -809,7 +809,7 @@ def test_insert_table_fills_the_dialog_size(window, monkeypatch):
     edit_action(window).trigger()
     source = window._source
     source.setPlainText("")
-    monkeypatch.setattr(heinoreader.window, "ask_table_size", lambda parent: (2, 3))
+    monkeypatch.setattr(HeinoReader.window, "ask_table_size", lambda parent: (2, 3))
     insert_action(window, "Table...").trigger()
     lines = source.toPlainText().splitlines()
     assert lines[0] == "| Col 1 | Col 2 | Col 3 |"
@@ -822,7 +822,7 @@ def test_insert_table_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
     source = window._source
     source.setPlainText("untouched")
-    monkeypatch.setattr(heinoreader.window, "ask_table_size", lambda parent: None)
+    monkeypatch.setattr(HeinoReader.window, "ask_table_size", lambda parent: None)
     insert_action(window, "Table...").trigger()
     assert source.toPlainText() == "untouched"
 
@@ -830,8 +830,8 @@ def test_insert_table_is_skipped_when_cancelled(window, monkeypatch):
 # ----------------------------------------------------------- desktop entry
 
 def test_desktop_file_uses_a_relative_exec_command():
-    desktop = (heinoreader.APP_DIR.parent.parent / "heinoreader.desktop").read_text(
+    desktop = (HeinoReader.APP_DIR.parent.parent / "heino-reader.desktop").read_text(
         encoding="utf-8"
     )
     exec_lines = [l for l in desktop.splitlines() if l.startswith("Exec=")]
-    assert exec_lines == ["Exec=heinoreader %f"]
+    assert exec_lines == ["Exec=heino-reader %f"]

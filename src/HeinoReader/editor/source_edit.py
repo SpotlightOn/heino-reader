@@ -1,7 +1,7 @@
 """The plain-text markdown source editor with indenting and a quote bar.
 
 This module is self-contained: it depends only on Qt and the sibling
-highlighter module, never on the rest of the heinoreader package.
+highlighter module, never on the rest of the Heino Reader package.
 
 Line numbers are *not* built in. They live in ``line_numbers.py`` as an
 optional add-on that can be attached and detached at runtime.
@@ -48,7 +48,7 @@ class MarkdownSourceEdit(QPlainTextEdit):
 
     Tab / Shift+Tab indent or unindent the selected lines (all lines the
     selection touches). Without a selection Tab just moves the cursor.
-    Line numbers are optional; see ``heinoreader.editor.line_numbers``.
+    Line numbers are optional; see ``HeinoReader.editor.line_numbers``.
     """
 
     INDENT = "    "  # spaces, so files stay portable
