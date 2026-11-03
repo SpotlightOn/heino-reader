@@ -113,6 +113,9 @@ Formatting (edit mode only):
 - Remote (`http(s)`) images are downloaded asynchronously and cached.
   **View → Load Remote Images** turns network access off; disabled or failed
   images show a visible placeholder.
+- **View → Wrap Code** (default on) breaks code lines that exceed the text
+  column. Off keeps them intact and scrolls the page instead; the Web Engine
+  renderer scrolls each code block on its own.
 - An open file is reloaded automatically when it changes on disk.
 
 ## Theme

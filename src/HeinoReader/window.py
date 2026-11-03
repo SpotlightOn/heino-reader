@@ -42,6 +42,7 @@ from .settings import (
     LINE_NUMBERS_KEY,
     REMOTE_IMAGES_KEY,
     RENDERER_KEY,
+    WRAP_CODE_KEY,
     Settings,
 )
 
@@ -529,6 +530,21 @@ class ViewerWindow(QMainWindow):
         )
         view_menu.addAction(self._remote_images_action)
 
+        self._wrap_code_action = QAction("Wrap &Code", self)
+        self._wrap_code_action.setCheckable(True)
+        self._wrap_code_action.setToolTip(
+            "Wrap lines that are wider than the text column. Off leaves long "
+            "code lines intact and shows a horizontal scrollbar for the page"
+        )
+        self._wrap_code_action.toggled.connect(self._set_code_wrap)
+        self._wrap_code_action.setChecked(
+            self._settings.get_bool(WRAP_CODE_KEY, True)
+        )
+        # setChecked() emits nothing when the value is already the default,
+        # so apply the saved state to the view explicitly.
+        self.viewer.set_code_wrap(self._wrap_code_action.isChecked())
+        view_menu.addAction(self._wrap_code_action)
+
         view_menu.addSeparator()
         self._web_preview_action = QAction("&Web Engine Preview", self)
         self._web_preview_action.setCheckable(True)
@@ -717,6 +733,13 @@ class ViewerWindow(QMainWindow):
         self._render_now()
 
     @Slot(bool)
+    def _set_code_wrap(self, enabled: bool) -> None:
+        """Switch wide code lines between wrapping and a page scrollbar."""
+        self.viewer.set_code_wrap(enabled)
+        self._settings.set_bool(WRAP_CODE_KEY, enabled)
+        self._render_now()
+
+    @Slot(bool)
     def _set_web_preview(self, enabled: bool) -> None:
         """Switch between the WebEngine and the Qt text renderer."""
         self._set_renderer(RENDERER_WEB if enabled else RENDERER_QT)
@@ -745,6 +768,7 @@ class ViewerWindow(QMainWindow):
             self._path.parent if self._path is not None else APP_DIR
         )
         new.set_remote_images_enabled(self._remote_images_action.isChecked())
+        new.set_code_wrap(self._wrap_code_action.isChecked())
 
         old = self.viewer
         visible = old.isVisible()

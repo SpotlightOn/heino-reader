@@ -9,6 +9,7 @@ Heino Reader can paint markdown with two different engines. Switch at runtime vi
 | Engine | `QTextDocument` | QtWebEngine (Chromium) |
 | Start | instant, no Chromium process | slower, starts Chromium |
 | HTML/CSS | small subset: borders and padding only on table cells, block backgrounds repeat per line | full fidelity |
+| Wide code lines | wrapped to the column by default (`View → Wrap Code`); off widens the document | wrapped by default too; off scrolls inside each code block |
 | Install size | `pyside6-essentials`, ~260 MB | plus `pyside6-addons`, ~440 MB more |
 
 ## The Qt renderer

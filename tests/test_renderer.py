@@ -54,16 +54,24 @@ def test_switching_renderer_replaces_the_view(qtbot, doc):
     window = make_window(qtbot, doc, HeinoReader.RENDERER_WEB)
     assert isinstance(window.viewer, WebMarkdownView)
 
+    # Wide code lines are one preference for both engines, so it has to follow
+    # the view across a swap instead of resetting to the default.
+    window._wrap_code_action.setChecked(False)
+    QApplication.processEvents()
+    assert window.viewer.wrap_code is False
+
     window._web_preview_action.setChecked(False)
     QApplication.processEvents()
     assert isinstance(window.viewer, QtMarkdownView)
     assert window._renderer == HeinoReader.RENDERER_QT
     assert window.viewer.base_dir == doc.parent
+    assert window.viewer.wrap_code is False
 
     window._web_preview_action.setChecked(True)
     QApplication.processEvents()
     assert isinstance(window.viewer, WebMarkdownView)
     assert window._renderer == HeinoReader.RENDERER_WEB
+    assert window.viewer.wrap_code is False
 
 
 def test_renderer_constants_are_consistent():
