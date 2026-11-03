@@ -75,6 +75,28 @@ def test_switching_renderer_replaces_the_view(qtbot, doc):
     assert window.viewer._wrap_code is False
 
 
+def test_zoom_follows_the_view_across_a_backend_switch(qtbot, doc, monkeypatch):
+    """A cached backend must not keep the zoom it had when it was parked."""
+    # A second Qt view stands in for the web backend, so the test stays off
+    # Chromium; the state handling in the window is what is under test.
+    monkeypatch.setattr(
+        HeinoReader.window,
+        "create_markdown_view",
+        lambda kind, parent: QtMarkdownView(parent),
+    )
+    window = make_window(qtbot, doc, HeinoReader.RENDERER_QT)
+    window._set_scale(1.2)
+    window._web_preview_action.setChecked(True)
+    QApplication.processEvents()
+    assert window.viewer._scale == pytest.approx(1.2)
+
+    window._set_scale(2.0)
+    window._web_preview_action.setChecked(False)
+    QApplication.processEvents()
+    assert isinstance(window.viewer, QtMarkdownView)
+    assert window.viewer._scale == pytest.approx(2.0)
+
+
 def test_renderer_constants_are_consistent():
     assert HeinoReader.DEFAULT_RENDERER in HeinoReader.RENDERERS
     assert set(HeinoReader.RENDERERS) == {"web", "qt"}

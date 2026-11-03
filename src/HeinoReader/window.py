@@ -765,8 +765,8 @@ class ViewerWindow(QMainWindow):
                 self._web_preview_action.setChecked(False)
                 self._web_preview_action.blockSignals(False)
                 return
-            new.set_zoom(self._scale)
             self._views[kind] = new
+        new.set_zoom(self._scale)
         new.set_base_dir(
             self._path.parent if self._path is not None else APP_DIR
         )
