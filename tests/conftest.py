@@ -11,6 +11,26 @@ os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu"
 os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Drain deferred deletes while Qt is still alive.
+
+    pytest-qt closes the widgets with ``deleteLater()``, and the queue is only
+    drained by a running event loop. After the last test nothing does that any
+    more: the QtWebEngine page outlives the ``QApplication`` and Qt crashes in
+    the interpreter's shutdown.
+    """
+    result = yield
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is not None:
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+    return result
+
+
 @pytest.fixture(autouse=True)
 def isolated_settings(tmp_path, monkeypatch):
     """Keep the user's real ~/.config/heino-reader out of the test suite."""
