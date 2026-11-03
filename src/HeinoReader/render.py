@@ -195,6 +195,13 @@ _LINE_HEIGHT_DECL_RE = re.compile(
 # setHtml() parses a fragment without <body>, so the body rule never matches.
 _BODY_BLOCK_SELECTORS = "p, li, dd, dt, td, th, blockquote"
 
+# Qt can scroll a document but not a single block, so one code line wider than
+# the text column widens the whole document and puts a scrollbar under the
+# window. ``overflow-x`` has no meaning in rich text and Qt ignores
+# ``word-wrap``/``word-break``; ``white-space: pre-wrap`` is the only supported
+# way to keep code inside the column, at the cost of soft-wrapping the line.
+_QT_PRE_WRAP_RULE = "pre { white-space: pre-wrap; }"
+
 
 def _qt_percent(value: float, unit: str, pixel_per_natural: float) -> float:
     """CSS line-height value as the percentage Qt expects for it.
@@ -207,7 +214,12 @@ def _qt_percent(value: float, unit: str, pixel_per_natural: float) -> float:
     return factor * pixel_per_natural * 100.0
 
 
-def qt_stylesheet(css: str | None = None, pixel_per_natural: float = 1.0) -> str:
+def qt_stylesheet(
+    css: str | None = None,
+    pixel_per_natural: float = 1.0,
+    *,
+    wrap_code: bool = True,
+) -> str:
     """The preview stylesheet with line heights Qt can use as they are.
 
     ``preview.css`` states line heights the CSS way (``1.55``, ``125%``). Qt
@@ -220,6 +232,9 @@ def qt_stylesheet(css: str | None = None, pixel_per_natural: float = 1.0) -> str
     is additionally spelled out on the block elements. ``pixel_per_natural``
     comes from the document font: ``QFontInfo.pixelSize() /
     QFontMetricsF.height()``.
+
+    ``wrap_code`` lets code lines wrap, which the shared file must not do: a
+    browser scrolls a ``pre``, Qt widens the whole document instead.
     """
     sheet = PREVIEW_CSS if css is None else css
 
@@ -230,20 +245,29 @@ def qt_stylesheet(css: str | None = None, pixel_per_natural: float = 1.0) -> str
         percent = _qt_percent(float(match.group(2)), unit, pixel_per_natural)
         return f"{match.group(1)}{percent:.2f}%"
 
-    corrected = _LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)
+    parts = [_LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)]
+    if wrap_code:
+        parts.append(_QT_PRE_WRAP_RULE)
     body = preview_line_height(css=sheet)
-    if body is None:
-        return corrected
-    percent = _qt_percent(body, "", pixel_per_natural)
-    return f"{corrected}\n{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}"
+    if body is not None:
+        percent = _qt_percent(body, "", pixel_per_natural)
+        parts.append(f"{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}")
+    return "\n".join(parts)
 
 
-def render_html_document(text: str) -> str:
-    """Render markdown to a complete HTML document for the web preview."""
+def render_html_document(text: str, *, wrap_code: bool = True) -> str:
+    """Render markdown to a complete HTML document for the web preview.
+
+    ``wrap_code`` targets the same preference as the Qt backend: the browser
+    scrolls an overflowing ``pre`` on its own, so wrapping is only applied when
+    the user asks for it.
+    """
     body = markdown_to_html(text)
+    wrap = "pre { white-space: pre-wrap; }" if wrap_code else ""
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        f"<style>{PREVIEW_CSS}</style></head><body>{body}</body></html>"
+        f"<style>{PREVIEW_CSS}</style><style>{wrap}</style></head>"
+        f"<body>{body}</body></html>"
     )
 
 

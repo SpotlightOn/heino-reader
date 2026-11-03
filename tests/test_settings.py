@@ -57,6 +57,7 @@ def test_view_toggles_are_remembered(qtbot, tmp_path):
     qtbot.addWidget(first)
     first._line_numbers_action.setChecked(True)
     first._remote_images_action.setChecked(False)
+    first._wrap_code_action.setChecked(False)
     QApplication.processEvents()
 
     second = HeinoReader.ViewerWindow(doc)
@@ -64,3 +65,5 @@ def test_view_toggles_are_remembered(qtbot, tmp_path):
     assert second._line_numbers_action.isChecked()
     assert not second._remote_images_action.isChecked()
     assert not second.viewer.remote_images_enabled
+    assert not second._wrap_code_action.isChecked()
+    assert not second.viewer.wrap_code

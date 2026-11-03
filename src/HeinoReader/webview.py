@@ -66,6 +66,7 @@ class WebMarkdownView(QWebEngineView):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._base_dir: Path | None = None
+        self._wrap_code = True
         self._profile = QWebEngineProfile(self)
         self._image_filter = RemoteImageFilter(self)
         self._profile.setUrlRequestInterceptor(self._image_filter)
@@ -92,6 +93,10 @@ class WebMarkdownView(QWebEngineView):
     def remote_images_enabled(self) -> bool:
         return self._image_filter.enabled
 
+    @property
+    def wrap_code(self) -> bool:
+        return self._wrap_code
+
     def set_base_dir(self, base_dir: Path | None) -> None:
         """Set the directory used to resolve relative links and images."""
         self._base_dir = base_dir
@@ -103,7 +108,11 @@ class WebMarkdownView(QWebEngineView):
             if self._base_dir is not None
             else QUrl("about:blank")
         )
-        self.setHtml(render_html_document(text), base)
+        self.setHtml(render_html_document(text, wrap_code=self._wrap_code), base)
+
+    def set_code_wrap(self, enabled: bool) -> None:
+        """Wrap wide code lines; the caller re-renders the document."""
+        self._wrap_code = enabled
 
     def set_remote_images_enabled(self, enabled: bool) -> None:
         self._image_filter.enabled = enabled

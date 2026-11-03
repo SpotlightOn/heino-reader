@@ -207,6 +207,84 @@ def test_qt_stylesheet_leaves_no_unitless_line_height():
     assert f"line-height: {1.55 * factor * 100:.2f}%" in sheet
 
 
+# ------------------------------------------------------------ code wrapping
+
+
+def test_qt_stylesheet_lets_code_lines_wrap():
+    """A wide code line must not widen the document, so Qt gets pre-wrap."""
+    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=1.0)
+    assert "pre { white-space: pre-wrap; }" in sheet
+
+
+def test_qt_stylesheet_can_leave_code_lines_alone():
+    """Turning the preference off must keep the line heights anyway."""
+    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=1.0, wrap_code=False)
+    assert "white-space: pre-wrap" not in sheet
+    assert "line-height: 155.00%" in sheet
+
+
+def test_web_document_follows_the_same_preference():
+    from HeinoReader.render import render_html_document
+
+    assert "white-space: pre-wrap" in render_html_document("```\nx\n```\n")
+    assert (
+        "white-space: pre-wrap"
+        not in render_html_document("```\nx\n```\n", wrap_code=False)
+    )
+
+
+def test_shared_stylesheet_keeps_the_browser_scroll():
+    """The web backend scrolls a wide `pre`; wrapping there would change it."""
+    assert "white-space: pre-wrap" not in HeinoReader.PREVIEW_CSS
+    assert "overflow-x: auto" in HeinoReader.PREVIEW_CSS
+
+
+def test_long_code_lines_do_not_widen_the_document(qtbot):
+    view = QtMarkdownView()
+    qtbot.addWidget(view)
+    view.resize(700, 600)
+    view.show()
+    QApplication.processEvents()
+    view.set_markdown("```\n" + "x" * 400 + "\n```\n")
+    QApplication.processEvents()
+
+    # The document width is final right away; the scrollbar range settles one
+    # layout pass later, so it is awaited instead of asserted immediately.
+    assert view.document().size().width() <= view.viewport().width()
+    qtbot.waitUntil(lambda: view.horizontalScrollBar().maximum() == 0)
+    # Wrapping is visual only: the line itself is untouched.
+    assert "x" * 400 in view.toPlainText()
+
+
+def test_switching_wrapping_off_restores_the_wide_document(qtbot):
+    view = QtMarkdownView()
+    qtbot.addWidget(view)
+    view.resize(700, 600)
+    view.show()
+    QApplication.processEvents()
+    text = "```\n" + "x" * 400 + "\n```\n"
+
+    view.set_code_wrap(False)
+    view.set_markdown(text)
+    QApplication.processEvents()
+    assert view.document().size().width() > view.viewport().width()
+
+    view.set_code_wrap(True)
+    view.set_markdown(text)
+    QApplication.processEvents()
+    assert view.document().size().width() <= view.viewport().width()
+
+
+def test_wrapped_code_keeps_its_indentation(qtbot):
+    view = QtMarkdownView()
+    qtbot.addWidget(view)
+    view.resize(400, 600)
+    view.set_markdown("```\nif True:\n\treturn '" + "y" * 200 + "'\n```\n")
+    QApplication.processEvents()
+
+    assert "\treturn '" in view.toPlainText()
+
+
 def test_wrapped_paragraph_lines_are_further_apart(qtbot):
     view = QtMarkdownView()
     qtbot.addWidget(view)

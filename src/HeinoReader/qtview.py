@@ -66,6 +66,7 @@ class QtMarkdownView(QTextEdit):
         self._has_images = False
         self._fit_width = -1
         self._scale = 1.0
+        self._wrap_code = True
         self._remote_enabled = True
         self._remote = RemoteImageLoader(self)
         self._remote.loaded.connect(self._on_remote_loaded)
@@ -116,8 +117,21 @@ class QtMarkdownView(QTextEdit):
         pixel = QFontInfo(font).pixelSize()
         factor = pixel / natural if natural > 0 and pixel > 0 else 1.0
         self.document().setDefaultStyleSheet(
-            qt_stylesheet(pixel_per_natural=factor)
+            qt_stylesheet(pixel_per_natural=factor, wrap_code=self._wrap_code)
         )
+
+    @property
+    def wrap_code(self) -> bool:
+        return self._wrap_code
+
+    def set_code_wrap(self, enabled: bool) -> None:
+        """Wrap wide code lines instead of widening the document.
+
+        The stylesheet only affects the next ``setHtml()``, so the caller
+        re-renders the document (``ViewerWindow._render_now``) afterwards.
+        """
+        self._wrap_code = enabled
+        self._apply_stylesheet()
 
     def set_remote_images_enabled(self, enabled: bool) -> None:
         self._remote_enabled = enabled

@@ -25,6 +25,7 @@ import HeinoReader
 import HeinoReader.icons
 import HeinoReader.window
 from HeinoReader import ViewerWindow, main
+from HeinoReader.settings import WRAP_CODE_KEY
 from HeinoReader.webview import MarkdownPage
 
 
@@ -800,6 +801,26 @@ def test_remote_images_can_be_switched_off(window):
     action.setChecked(True)
     QApplication.processEvents()
     assert window.viewer.remote_images_enabled
+
+
+def test_code_wrap_is_enabled_by_default(window):
+    action = menu_action(window, "View", "Wrap Code")
+    assert action.isCheckable()
+    assert action.isChecked()
+    assert window.viewer.wrap_code
+
+
+def test_code_wrap_can_be_switched_off(window):
+    action = menu_action(window, "View", "Wrap Code")
+    action.setChecked(False)
+    QApplication.processEvents()
+    assert not window.viewer.wrap_code
+    assert not window._settings.get_bool(WRAP_CODE_KEY, True)
+
+    action.setChecked(True)
+    QApplication.processEvents()
+    assert window.viewer.wrap_code
+    assert window._settings.get_bool(WRAP_CODE_KEY, False)
 
 
 def test_highlighter_styles_headings_bold_and_code(window):

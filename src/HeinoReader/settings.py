@@ -15,6 +15,7 @@ from PySide6.QtCore import QSettings, QStandardPaths
 RENDERER_KEY = "view/renderer"
 LINE_NUMBERS_KEY = "view/line_numbers"
 REMOTE_IMAGES_KEY = "view/remote_images"
+WRAP_CODE_KEY = "view/wrap_code"
 
 
 def config_dir() -> Path:

@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Preview: `View → Wrap Code` (default on) keeps long code lines inside the
+  text column instead of widening the document; both renderers follow it.
+
 ## [0.2.2] - 2026-10-27
 
 ### Added
