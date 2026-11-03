@@ -120,10 +120,6 @@ class QtMarkdownView(QTextEdit):
             qt_stylesheet(pixel_per_natural=factor, wrap_code=self._wrap_code)
         )
 
-    @property
-    def wrap_code(self) -> bool:
-        return self._wrap_code
-
     def set_code_wrap(self, enabled: bool) -> None:
         """Wrap wide code lines instead of widening the document.
 

@@ -46,6 +46,13 @@ heino-reader = "HeinoReader:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.coverage.run]
+source = ["HeinoReader"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"
@@ -69,6 +76,7 @@ packages = ["src/HeinoReader"]
 dev = [
     "PySide6-Addons>=6.6,<6.12",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "pytest-qt>=4.5.0",
     "ruff>=0.17.2",
 ]

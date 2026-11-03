@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml"><img src="https://github.com/SpotlightOn/heino-reader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/SpotlightOn/heino-reader"><img src="https://codecov.io/gh/SpotlightOn/heino-reader/graph/badge.svg" alt="Coverage"></a>
   <a href="https://pypi.org/project/heino-reader/"><img src="https://img.shields.io/pypi/v/heino-reader?style=flat" alt="PyPI"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python: 3.10+"></a>
   <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/Qt_for_Python-PySide6-41cd52" alt="Qt for Python"></a>

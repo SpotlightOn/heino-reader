@@ -807,19 +807,19 @@ def test_code_wrap_is_enabled_by_default(window):
     action = menu_action(window, "View", "Wrap Code")
     assert action.isCheckable()
     assert action.isChecked()
-    assert window.viewer.wrap_code
+    assert window.viewer._wrap_code
 
 
 def test_code_wrap_can_be_switched_off(window):
     action = menu_action(window, "View", "Wrap Code")
     action.setChecked(False)
     QApplication.processEvents()
-    assert not window.viewer.wrap_code
+    assert not window.viewer._wrap_code
     assert not window._settings.get_bool(WRAP_CODE_KEY, True)
 
     action.setChecked(True)
     QApplication.processEvents()
-    assert window.viewer.wrap_code
+    assert window.viewer._wrap_code
     assert window._settings.get_bool(WRAP_CODE_KEY, False)
 
 

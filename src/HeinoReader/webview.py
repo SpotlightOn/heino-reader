@@ -93,10 +93,6 @@ class WebMarkdownView(QWebEngineView):
     def remote_images_enabled(self) -> bool:
         return self._image_filter.enabled
 
-    @property
-    def wrap_code(self) -> bool:
-        return self._wrap_code
-
     def set_base_dir(self, base_dir: Path | None) -> None:
         """Set the directory used to resolve relative links and images."""
         self._base_dir = base_dir

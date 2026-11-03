@@ -6,6 +6,7 @@ Dependencies are managed with [uv](https://docs.astral.sh/uv/):
 uv sync                        # create .venv and install PySide6 + Heino Reader
 uv run heino-reader file.md    # run from the synced environment
 uv run python -m pytest        # run the test suite
+uv run python -m pytest --cov --cov-report=term-missing   # with coverage
 ```
 
 ## Dependencies

@@ -520,14 +520,6 @@ class ViewerWindow(QMainWindow):
             "Download images from http(s) URLs; sends network requests"
         )
         self._remote_images_action.toggled.connect(self._set_remote_images)
-        self._remote_images_action.setChecked(
-            self._settings.get_bool(REMOTE_IMAGES_KEY, True)
-        )
-        # setChecked() emits nothing when the value is already false, so
-        # apply the saved state to the view explicitly.
-        self.viewer.set_remote_images_enabled(
-            self._remote_images_action.isChecked()
-        )
         view_menu.addAction(self._remote_images_action)
 
         self._wrap_code_action = QAction("Wrap &Code", self)
@@ -537,13 +529,17 @@ class ViewerWindow(QMainWindow):
             "code lines intact and shows a horizontal scrollbar for the page"
         )
         self._wrap_code_action.toggled.connect(self._set_code_wrap)
+        view_menu.addAction(self._wrap_code_action)
+
+        self._remote_images_action.setChecked(
+            self._settings.get_bool(REMOTE_IMAGES_KEY, True)
+        )
         self._wrap_code_action.setChecked(
             self._settings.get_bool(WRAP_CODE_KEY, True)
         )
-        # setChecked() emits nothing when the value is already the default,
-        # so apply the saved state to the view explicitly.
-        self.viewer.set_code_wrap(self._wrap_code_action.isChecked())
-        view_menu.addAction(self._wrap_code_action)
+        # setChecked() emits nothing when a value already matches the default,
+        # so the saved state is applied explicitly.
+        self._sync_view_options()
 
         view_menu.addSeparator()
         self._web_preview_action = QAction("&Web Engine Preview", self)
@@ -728,16 +724,23 @@ class ViewerWindow(QMainWindow):
     @Slot(bool)
     def _set_remote_images(self, enabled: bool) -> None:
         """Allow or forbid downloading remote images, then re-render."""
-        self.viewer.set_remote_images_enabled(enabled)
         self._settings.set_bool(REMOTE_IMAGES_KEY, enabled)
+        self._sync_view_options()
         self._render_now()
 
     @Slot(bool)
     def _set_code_wrap(self, enabled: bool) -> None:
         """Switch wide code lines between wrapping and a page scrollbar."""
-        self.viewer.set_code_wrap(enabled)
         self._settings.set_bool(WRAP_CODE_KEY, enabled)
+        self._sync_view_options()
         self._render_now()
+
+    def _sync_view_options(self) -> None:
+        """Apply the View-menu toggles to the current preview backend."""
+        self.viewer.set_remote_images_enabled(
+            self._remote_images_action.isChecked()
+        )
+        self.viewer.set_code_wrap(self._wrap_code_action.isChecked())
 
     @Slot(bool)
     def _set_web_preview(self, enabled: bool) -> None:
@@ -762,13 +765,11 @@ class ViewerWindow(QMainWindow):
                 self._web_preview_action.setChecked(False)
                 self._web_preview_action.blockSignals(False)
                 return
-            new.set_zoom(self._scale)
             self._views[kind] = new
+        new.set_zoom(self._scale)
         new.set_base_dir(
             self._path.parent if self._path is not None else APP_DIR
         )
-        new.set_remote_images_enabled(self._remote_images_action.isChecked())
-        new.set_code_wrap(self._wrap_code_action.isChecked())
 
         old = self.viewer
         visible = old.isVisible()
@@ -781,6 +782,7 @@ class ViewerWindow(QMainWindow):
         self.viewer = new
         self._renderer = kind
         self._settings.set_string(RENDERER_KEY, kind)
+        self._sync_view_options()
         new.setVisible(visible)
         self._web_preview_action.blockSignals(True)
         self._web_preview_action.setChecked(kind == RENDERER_WEB)
