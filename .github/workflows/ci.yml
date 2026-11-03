@@ -9,6 +9,9 @@ jobs:
   test:
     name: Lint + tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -35,8 +38,14 @@ jobs:
         run: uv run ruff check .
 
       - name: Tests (pytest)
-        run: uv run pytest -q
+        run: uv run pytest -q --cov --cov-report=term-missing --cov-report=xml
         env:
           QT_QPA_PLATFORM: offscreen
           QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu"
           QTWEBENGINE_DISABLE_SANDBOX: "1"
+
+      # Public repository: Codecov takes the token from GitHub OIDC.
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
