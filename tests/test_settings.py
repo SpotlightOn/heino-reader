@@ -66,4 +66,4 @@ def test_view_toggles_are_remembered(qtbot, tmp_path):
     assert not second._remote_images_action.isChecked()
     assert not second.viewer.remote_images_enabled
     assert not second._wrap_code_action.isChecked()
-    assert not second.viewer.wrap_code
+    assert not second.viewer._wrap_code

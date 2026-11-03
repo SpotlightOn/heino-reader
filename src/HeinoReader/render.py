@@ -200,7 +200,9 @@ _BODY_BLOCK_SELECTORS = "p, li, dd, dt, td, th, blockquote"
 # window. ``overflow-x`` has no meaning in rich text and Qt ignores
 # ``word-wrap``/``word-break``; ``white-space: pre-wrap`` is the only supported
 # way to keep code inside the column, at the cost of soft-wrapping the line.
-_QT_PRE_WRAP_RULE = "pre { white-space: pre-wrap; }"
+# The browser could scroll a ``pre`` on its own, but the preference means the
+# same in both backends, so the rule is used for both.
+_PRE_WRAP_RULE = "pre { white-space: pre-wrap; }"
 
 
 def _qt_percent(value: float, unit: str, pixel_per_natural: float) -> float:
@@ -247,7 +249,7 @@ def qt_stylesheet(
 
     parts = [_LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)]
     if wrap_code:
-        parts.append(_QT_PRE_WRAP_RULE)
+        parts.append(_PRE_WRAP_RULE)
     body = preview_line_height(css=sheet)
     if body is not None:
         percent = _qt_percent(body, "", pixel_per_natural)
@@ -263,7 +265,7 @@ def render_html_document(text: str, *, wrap_code: bool = True) -> str:
     the user asks for it.
     """
     body = markdown_to_html(text)
-    wrap = "pre { white-space: pre-wrap; }" if wrap_code else ""
+    wrap = _PRE_WRAP_RULE if wrap_code else ""
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         f"<style>{PREVIEW_CSS}</style><style>{wrap}</style></head>"
