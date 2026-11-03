@@ -28,6 +28,7 @@ def make_window(qtbot, path, renderer):
     return window
 
 
+@pytest.mark.usefixtures("qapp")
 def test_factory_returns_the_requested_backend():
     assert isinstance(
         HeinoReader.create_markdown_view(HeinoReader.RENDERER_WEB), WebMarkdownView
