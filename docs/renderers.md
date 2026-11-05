@@ -1,10 +1,10 @@
-# Two preview renderers
+# Two renderers
 
 Heino Reader can paint markdown with two different engines. Switch at runtime via
-**View → Web Engine Preview** or at startup with `--renderer qt|web`
+**View → Web Engine Renderer** or at startup with `--renderer qt|web`
 (default `qt`).
 
-|  | Qt text renderer (default) | Web Engine preview (optional) |
+|  | Qt text renderer (default) | Web Engine renderer (optional) |
 | --- | --- | --- |
 | Engine | `QTextDocument` | QtWebEngine (Chromium) |
 | Start | instant, no Chromium process | slower, starts Chromium |
@@ -21,7 +21,7 @@ backgrounds repeat per line instead of forming one panel.
 
 ### Typography
 
-`preview.css` is shared with the Web Engine backend, so its body rule keeps
+`document.css` is shared with the Web Engine backend, so its body rule keeps
 CSS pixels. For the Qt backend the body size and font family are read from that
 file and handed to `QTextDocument.setDefaultFont()` as a **point** size
 (16 px → 12 pt) — the one thing a `QTextDocument` cannot take from a stylesheet,
@@ -34,7 +34,7 @@ font chooser is planned, so a concrete family will become a user setting rather
 than something guessed here.
 
 Points matter here: Qt scales point sizes with the screen DPI, while CSS pixel
-sizes are DPI blind inside `QTextDocument`. The preview therefore looks the same
+sizes are DPI blind inside `QTextDocument`. The view therefore looks the same
 size as the rest of the desktop at 96, 144 or any other DPI, and zoom just
 multiplies the point size. Heading levels come from Qt's own HTML scale
 (about 2× / 1.5× / 1.2× of the body font), which scales along with it — no
@@ -66,7 +66,7 @@ The whole editor stack (source pane, syntax highlighter, line-number gutter) is
 created lazily on the first click on **Edit mode**, so the viewer itself stays
 lean.
 
-## The Web Engine preview
+## The Web Engine renderer
 
 The better but slower renderer: tables, borders and backgrounds follow the CSS
 exactly. It needs the optional [PySide6-Addons](https://pypi.org/project/PySide6-Addons/)

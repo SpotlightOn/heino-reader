@@ -52,12 +52,10 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         dim = base.color(QPalette.ColorRole.PlaceholderText)
         accent = base.color(QPalette.ColorRole.Link)
 
-        def fmt(color=None, *, bold=False, italic=False, background=None):
+        def fmt(color=None, *, bold=False, italic=False):
             result = QTextCharFormat()
             if color is not None:
                 result.setForeground(color)
-            if background is not None:
-                result.setBackground(background)
             if bold:
                 result.setFontWeight(QFont.Weight.Bold)
             if italic:
@@ -84,7 +82,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # Bold / italic / bold-italic.
             (r"\*\*[^*\n]+\*\*", fmt(text, bold=True), 0),
             (r"__[^_\n]+__", fmt(text, bold=True), 0),
-            (r"\*[^*\n]+\*", fmt(italic=True), 0),
+            # Single stars only: `*text*` inside `**text**` is not italics.
+            (r"(?<!\*)\*[^*\n]+\*(?!\*)", fmt(italic=True), 0),
             (r"\[[^\]\n]*\]\([^)\n]+\)", fmt(accent), 0),
             (r"^\s*([-*+]|\d+[.)]) ", fmt(dim), 0),
             (r"^\s*> ", fmt(dim), 0),
@@ -121,7 +120,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         heading = self._heading.match(text)
         if heading:
-            # Scale the size with the heading level, like the preview does.
+            # Scale the size with the heading level, like the viewer does.
             size = QFontDatabase.systemFont(
                 QFontDatabase.SystemFont.FixedFont
             ).pointSizeF()

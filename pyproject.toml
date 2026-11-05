@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# pip install "heino-reader[web]" enables View -> Web Engine Preview.
+# pip install "heino-reader[web]" enables View -> Web Engine Renderer.
 web = ["PySide6-Addons>=6.6,<6.12"]
 
 [project.urls]

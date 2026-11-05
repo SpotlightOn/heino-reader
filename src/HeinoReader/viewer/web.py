@@ -1,6 +1,6 @@
-"""QtWebEngine-based markdown preview (opt-in, full HTML/CSS fidelity).
+"""QtWebEngine-based markdown viewer (opt-in, full HTML/CSS fidelity).
 
-This module is imported lazily: selecting the web preview is what loads
+This module is imported lazily: selecting the web renderer is what loads
 Chromium, so a Qt-rendered start never pays for it.
 """
 
@@ -20,8 +20,8 @@ from PySide6.QtWebEngineCore import (
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QWidget
 
+from ..utils import open_external
 from .render import render_html_document
-from .utils import open_external
 
 
 class MarkdownPage(QWebEnginePage):
@@ -59,8 +59,8 @@ class WebMarkdownView(QWebEngineView):
 
     QTextDocument only supports a small CSS subset (borders and padding
     work on table cells only, and block backgrounds repeat per line), so a
-    Chromium view is used for a faithful preview. The look lives in
-    ``preview.css``.
+    Chromium view is used for a faithful rendering. The look lives in
+    ``document.css``.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:

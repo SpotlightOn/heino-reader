@@ -38,7 +38,7 @@ usage() {
 Usage: scripts/install-uv.sh [install|--uninstall] [--web]
 
   --web        also install QtWebEngine (pyside6-addons, ~440 MB) for the
-               optional Web Engine preview
+               optional Web Engine renderer
   --uninstall  remove the tool, desktop entry and icon
 EOF
 }
@@ -90,6 +90,6 @@ echo "  desktop:  $DATA_HOME/applications/heino-reader.desktop"
 echo "  icon:     $DATA_HOME/icons/hicolor/scalable/apps/heino-reader.svg"
 if [ "$WITH_WEB" -eq 0 ]; then
     echo
-    echo "Note: QtWebEngine is not installed; View -> Web Engine Preview is"
+    echo "Note: QtWebEngine is not installed; View -> Web Engine Renderer is"
     echo "      disabled. Add it later with: scripts/install-uv.sh --web"
 fi

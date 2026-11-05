@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QStyle, QWidget
 
-from . import preview
+from . import viewer
 from .editor import formatting
 from .icons import _icon
 from .settings import LINE_NUMBERS_KEY, REMOTE_IMAGES_KEY, WRAP_CODE_KEY
@@ -198,7 +198,7 @@ class Actions:
             glyph="\N{LOWER LEFT PENCIL}",
         )
         self.edit_mode.setToolTip(
-            "Toggle edit mode: source left, live preview right "
+            "Toggle edit mode: source left, live view right "
             "(click again for the default view)"
         )
 
@@ -218,21 +218,21 @@ class Actions:
             "code lines intact and shows a horizontal scrollbar for the page",
             window.settings.get_bool(WRAP_CODE_KEY, True),
         )
-        self.web_preview = make_action(
-            parent, "&Web Engine Preview", "", (), None,
-            window.set_web_preview, checkable=True,
-            enabled=preview.web_engine_available(),
+        self.web_renderer = make_action(
+            parent, "&Web Engine Renderer", "", (), None,
+            window.set_web_renderer, checkable=True,
+            enabled=viewer.web_engine_available(),
         )
-        self.web_preview.blockSignals(True)
-        self.web_preview.setChecked(
-            window.preview.kind == preview.RENDERER_WEB
+        self.web_renderer.blockSignals(True)
+        self.web_renderer.setChecked(
+            window.viewer_area.kind == viewer.RENDERER_WEB
         )
-        self.web_preview.blockSignals(False)
-        self.web_preview.setToolTip(
+        self.web_renderer.blockSignals(False)
+        self.web_renderer.setToolTip(
             "Render with QtWebEngine for full HTML/CSS fidelity. Better but "
             "slower than the Qt text renderer (default), which never loads "
             "Chromium"
-            if preview.web_engine_available()
+            if viewer.web_engine_available()
             else f"Not installed. {WEB_EXTRA_HINT}"
         )
 

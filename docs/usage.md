@@ -30,7 +30,7 @@ The same check applies to the Open dialog, the command line and drag & drop.
 ## Edit mode
 
 Click the pencil in the toolbar or press the **Edit mode** toggle again to leave
-it. The window splits: markdown source on the left, live preview on the right.
+it. The window splits: markdown source on the left, live view on the right.
 
 - Entering edit mode widens the window up to 1200 px, clamped to the usable
   screen width; leaving it restores the previous size and position.
@@ -41,7 +41,7 @@ it. The window splits: markdown source on the left, live preview on the right.
   marker, it removes it again. Each command is a single undo step.
 - **Undo** and **Redo** start the second toolbar row (or `Ctrl+Z`,
   `Ctrl+Shift+Z`, `Ctrl+Y`); both are greyed out while there is nothing to
-  undo or redo. The preview is read-only, so it has no history of its own.
+  undo or redo. The viewer is read-only, so it has no history of its own.
 - Closing the window, opening another file or dropping a file onto the window
   with unsaved edits asks first (Save / Discard / Cancel). Unsaved changes are
   marked in the title bar, so nothing is lost silently.
@@ -51,7 +51,7 @@ it. The window splits: markdown source on the left, live preview on the right.
   it — indentation, bullet character and numbering included.
 - The source pane is a real code editor: markdown syntax highlighting, Tab /
   Shift+Tab indent whole lines, and a bar marks block quotes. It uses the
-  preview's text size, only in a monospace font, so **Zoom** scales both panes
+  view's text size, only in a monospace font, so **Zoom** scales both panes
   together.
 - Enter continues the block you are in: `> ` stays a quote, `- `, `* ` and
   `+ ` open the next bullet, `1. ` counts up and keeps its `.` or `)`
@@ -120,8 +120,9 @@ Formatting (edit mode only):
 
 ## Theme
 
-The preview theme is a plain stylesheet: `src/HeinoReader/preview.css`. Both
-backends use it, so it keeps standard CSS (`em`, `line-height`, `max-width`);
+The document theme is a plain stylesheet:
+`src/HeinoReader/viewer/document.css`. Both backends use it, so it keeps
+standard CSS (`em`, `line-height`, `max-width`);
 the Qt backend derives its typography from the body rule and hands the size to
 Qt in points, which keeps the text DPI aware. Toolbar icons are bundled Material
 Symbols Outlined SVGs, rendered in the palette text color so they stay readable

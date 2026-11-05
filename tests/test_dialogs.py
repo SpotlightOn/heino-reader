@@ -238,7 +238,7 @@ class FakeMessageBox:
 
 @pytest.mark.parametrize(
     ("answer", "expected"),
-    [("Discard", "discard"), ("Cancel", "cancel")],
+    [("Discard", "discard"), ("Save", "save"), ("Cancel", "cancel")],
 )
 def test_ask_discard_changes_maps_the_button(
     monkeypatch, qapp, answer, expected

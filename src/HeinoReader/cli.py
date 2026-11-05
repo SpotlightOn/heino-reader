@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from .files import rejection_reason
 from .icons import ICON_PATH
-from .preview import RENDERERS
+from .viewer import RENDERERS
 from .window import ViewerWindow
 
 
@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=RENDERERS,
         default=None,
         help=(
-            "preview backend: 'qt' (QTextEdit, the default) or 'web' "
+            "renderer: 'qt' (QTextEdit, the default) or 'web' "
             "(QtWebEngine, loaded only when selected); defaults to the last "
             "used renderer, initially 'qt'"
         ),

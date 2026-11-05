@@ -1,4 +1,4 @@
-"""Preview backends: the two renderers and the one currently shown.
+"""Renderers: the two backends and the one currently shown.
 
 The Qt text renderer is the default and is imported eagerly; the WebEngine
 backend is created lazily, so a Qt-rendered start never loads Chromium.
@@ -9,30 +9,15 @@ from __future__ import annotations
 import sys
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Protocol
 
 from PySide6.QtWidgets import QSplitter, QWidget
 
-from .qtview import QtMarkdownView
+from .qt import QtMarkdownView
 
 RENDERER_WEB = "web"
 RENDERER_QT = "qt"
 DEFAULT_RENDERER = RENDERER_QT
 RENDERERS = (RENDERER_WEB, RENDERER_QT)
-
-
-class MarkdownView(Protocol):
-    """The API the window expects from a preview backend."""
-
-    def set_markdown(self, text: str) -> None: ...
-
-    def set_zoom(self, scale: float) -> None: ...
-
-    def set_base_dir(self, base_dir: Path | None) -> None: ...
-
-    def set_code_wrap(self, enabled: bool) -> None: ...
-
-    def set_remote_images_enabled(self, enabled: bool) -> None: ...
 
 
 def web_engine_available() -> bool:
@@ -47,14 +32,14 @@ def web_engine_available() -> bool:
 def create_markdown_view(
     kind: str, parent: QWidget | None = None
 ) -> QWidget:
-    """Return a preview widget for ``kind``.
+    """Return a viewer widget for ``kind``.
 
     The WebEngine backend is imported here rather than at module level, so a
-    Qt-rendered preview never loads Chromium.
+    Qt-rendered view never loads Chromium.
     """
     if kind == RENDERER_QT:
         return QtMarkdownView(parent)
-    from .webview import WebMarkdownView
+    from .web import WebMarkdownView
 
     return WebMarkdownView(parent)
 
@@ -74,8 +59,8 @@ def chosen_renderer(requested: str | None, remembered: str | None) -> str:
     return chosen
 
 
-class PreviewArea:
-    """The preview widgets and which backend the splitter shows.
+class ViewerArea:
+    """The viewer widgets and which backend the splitter shows.
 
     Both backends are kept once created, so switching back is instant. The
     zoom and the base directory are remembered here and reapplied to a view
@@ -107,7 +92,7 @@ class PreviewArea:
     def _create(self, kind: str) -> QWidget:
         view = create_markdown_view(kind, self._parent)
         view.set_base_dir(self._base_dir)
-        # Drops belong to the window, not to the preview inside it.
+        # Drops belong to the window, not to the viewer inside it.
         view.setAcceptDrops(False)
         return view
 

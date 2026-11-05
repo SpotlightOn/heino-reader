@@ -1,6 +1,6 @@
 """Tests for the Qt backend's typography.
 
-preview.css is shared with the WebEngine backend, so its body rule keeps CSS
+document.css is shared with the WebEngine backend, so its body rule keeps CSS
 pixels. The Qt backend converts that one value to points, because Qt scales
 points with the screen DPI while CSS pixel sizes stay DPI blind inside
 QTextDocument. Everything else (heading scale, emphasis) is Qt's own.
@@ -12,13 +12,13 @@ import pytest
 from PySide6.QtGui import QFontInfo, QFontMetricsF
 from PySide6.QtWidgets import QApplication
 
-from HeinoReader.qtview import QtMarkdownView, preview_font
-from HeinoReader.render import (
-    PREVIEW_CSS,
-    preview_body_point_size,
-    preview_font_families,
-    preview_line_height,
+from HeinoReader.viewer.qt import QtMarkdownView, viewer_font
+from HeinoReader.viewer.render import (
+    DOCUMENT_CSS,
     qt_stylesheet,
+    viewer_body_point_size,
+    viewer_font_families,
+    viewer_line_height,
 )
 
 
@@ -37,19 +37,19 @@ def view(qtbot):
 
 def test_body_size_is_converted_from_the_stylesheet():
     """16 px in the stylesheet is 12 pt for Qt."""
-    assert preview_body_point_size() == pytest.approx(12.0)
+    assert viewer_body_point_size() == pytest.approx(12.0)
 
 
 def test_families_come_from_the_stylesheet():
     """A generic family, so every platform resolves it without extra fonts."""
-    assert preview_font_families() == ["sans-serif"]
-    resolved = QFontInfo(preview_font()).family()
+    assert viewer_font_families() == ["sans-serif"]
+    resolved = QFontInfo(viewer_font()).family()
     assert resolved, "sans-serif must resolve to a real font"
 
 
 def test_stylesheet_keeps_its_css_pixels_for_the_web_backend():
     """The Qt conversion must not be pushed into the shared file."""
-    assert "font-size: 16px" in PREVIEW_CSS
+    assert "font-size: 16px" in DOCUMENT_CSS
 
 
 @pytest.mark.parametrize(
@@ -64,7 +64,7 @@ def test_stylesheet_keeps_its_css_pixels_for_the_web_backend():
     ],
 )
 def test_body_size_parsing(css, expected):
-    assert preview_body_point_size(css) == pytest.approx(expected)
+    assert viewer_body_point_size(css) == pytest.approx(expected)
 
 
 # ------------------------------------------------------------ the Qt document
@@ -77,10 +77,10 @@ def test_default_font_is_point_sized(view):
     assert font.pixelSize() == -1
 
 
-def test_preview_font_follows_the_zoom_level():
-    assert preview_font(1.0).pointSizeF() == pytest.approx(12.0)
-    assert preview_font(1.3).pointSizeF() == pytest.approx(15.6)
-    assert preview_font(1.0).pixelSize() == -1
+def test_viewer_font_follows_the_zoom_level():
+    assert viewer_font(1.0).pointSizeF() == pytest.approx(12.0)
+    assert viewer_font(1.3).pointSizeF() == pytest.approx(15.6)
+    assert viewer_font(1.0).pixelSize() == -1
 
 
 def test_zoom_rescales_the_document_font(view):
@@ -135,8 +135,8 @@ def _block_formats(view) -> dict:
 
 
 def test_stylesheet_declares_the_css_line_heights():
-    assert preview_line_height() == pytest.approx(1.55)
-    assert preview_line_height(heading=True) == pytest.approx(1.25)
+    assert viewer_line_height() == pytest.approx(1.55)
+    assert viewer_line_height(heading=True) == pytest.approx(1.25)
 
 
 @pytest.mark.parametrize(
@@ -150,8 +150,8 @@ def test_stylesheet_declares_the_css_line_heights():
     ],
 )
 def test_line_height_parsing(css, expected_body, expected_heading):
-    assert preview_line_height(css=css) == expected_body
-    assert preview_line_height(heading=True, css=css) == expected_heading
+    assert viewer_line_height(css=css) == expected_body
+    assert viewer_line_height(heading=True, css=css) == expected_heading
 
 
 def test_body_blocks_use_the_css_line_height(view):
@@ -220,7 +220,7 @@ def test_qt_stylesheet_wraps_code_only_when_asked():
     """A wide code line must not widen the document, so Qt gets pre-wrap."""
     assert "white-space: pre-wrap" in qt_stylesheet(pixel_per_natural=1.0)
     # The shared file keeps ``pre`` scrollable for the browser.
-    assert "white-space: pre-wrap" not in PREVIEW_CSS
+    assert "white-space: pre-wrap" not in DOCUMENT_CSS
 
     sheet = qt_stylesheet(pixel_per_natural=1.0, wrap_code=False)
     assert "white-space: pre-wrap" not in sheet
@@ -228,7 +228,7 @@ def test_qt_stylesheet_wraps_code_only_when_asked():
 
 
 def test_web_document_follows_the_same_preference():
-    from HeinoReader.render import render_html_document
+    from HeinoReader.viewer.render import render_html_document
 
     assert "white-space: pre-wrap" in render_html_document("```\nx\n```\n")
     assert (

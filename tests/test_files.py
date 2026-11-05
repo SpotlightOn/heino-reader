@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
@@ -150,3 +152,29 @@ def test_drag_enter_only_accepts_text_files(window, tmp_path, name, accepted):
     )
     window.dragEnterEvent(event)
     assert event.isAccepted() is accepted
+
+
+def test_looks_binary_treats_an_unreadable_file_as_text(tmp_path):
+    """A permission error is not evidence of binary content."""
+    path = tmp_path / "locked.md"
+    path.write_text("# nope\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        assert looks_binary(path) is False
+    finally:
+        path.chmod(0o600)
+
+
+def test_rejection_reason_explains_a_filesystem_error(tmp_path, monkeypatch):
+    """A stat that fails mid-check must produce a reason, not a traceback."""
+    path = tmp_path / "notes.md"
+    path.write_text("# x\n", encoding="utf-8")
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+    def failing_stat(self, *args, **kwargs):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(Path, "stat", failing_stat)
+
+    assert rejection_reason(path) == "it cannot be read (permission denied)"

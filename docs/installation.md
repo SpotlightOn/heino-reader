@@ -48,7 +48,7 @@ The app itself only needs Qt's base modules, all of which ship in
 
 The Web Engine renderer needs `pyside6-addons`, which is 439 MB installed —
 195 MB of that is `libQt6WebEngineCore.so` alone. So `--web` stays an explicit
-choice. Without it, **View → Web Engine Preview** is greyed out and the app
+choice. Without it, **View → Web Engine Renderer** is greyed out and the app
 falls back to the Qt renderer with a note on stderr: no crash, no hidden
 download.
 

@@ -7,6 +7,7 @@ from PySide6.QtCore import QEventLoop, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontDatabase,
     QImage,
     QTextCharFormat,
     QTextCursor,
@@ -22,17 +23,17 @@ from PySide6.QtWidgets import (
 )
 
 import HeinoReader.icons
-import HeinoReader.webview
+import HeinoReader.viewer.web
 import HeinoReader.window
 from HeinoReader.cli import main
 from HeinoReader.editor import MarkdownHighlighter, MarkdownSourceEdit
 from HeinoReader.icons import APP_DIR, ICONS_DIR, _material_icon
-from HeinoReader.preview import RENDERER_QT
-from HeinoReader.qtview import QtMarkdownView
-from HeinoReader.render import markdown_to_html, preview_body_point_size
 from HeinoReader.settings import WRAP_CODE_KEY
-from HeinoReader.texts import PLACEHOLDER_MD
-from HeinoReader.webview import MarkdownPage
+from HeinoReader.texts import PLACEHOLDER_MD, WEB_EXTRA_HINT
+from HeinoReader.viewer import RENDERER_QT
+from HeinoReader.viewer.qt import QtMarkdownView
+from HeinoReader.viewer.render import markdown_to_html, viewer_body_point_size
+from HeinoReader.viewer.web import MarkdownPage
 from HeinoReader.window import EDIT_MODE_WIDTH, ViewerWindow
 
 
@@ -45,8 +46,8 @@ def make_window(qtbot, path):
     return window
 
 
-def preview_text(window, timeout=10000):
-    """Return the rendered preview text, waiting for the engine if needed."""
+def viewer_text(window, timeout=10000):
+    """Return the rendered view text, waiting for the engine if needed."""
     page = getattr(window.viewer, "page", None)
     if page is None:  # Qt text renderer: no asynchronous page load
         return window.viewer.toPlainText()
@@ -385,7 +386,7 @@ def test_edit_mode_splits_and_restores_view(qtbot, window):
     assert action.isChecked()
     assert window.splitter.count() == 2
     assert window.editor.source.isVisible()
-    assert window.editor.source.x() < window.viewer.x(), "source must be left of preview"
+    assert window.editor.source.x() < window.viewer.x(), "source must be left of the viewer"
     assert window.editor.source.toPlainText() == window.document.markdown
     assert abs(window.editor.source.width() - window.viewer.width()) <= 8, (
         "halves should be roughly equal"
@@ -396,7 +397,7 @@ def test_edit_mode_splits_and_restores_view(qtbot, window):
     qtbot.wait(1)
     assert not window.editor.source.isVisible()
     assert window.viewer.width() >= window.splitter.width() - 4, (
-        "preview should fill the window again"
+        "view should fill the window again"
     )
 
 
@@ -444,7 +445,7 @@ def test_edit_mode_stays_on_screen_when_widening(qtbot, window):
     assert screen.contains(window.geometry())
 
 
-def test_default_view_is_preview_only(window):
+def test_default_view_is_viewer_only(window):
     assert window.splitter.count() == 1, "no editor pane before edit mode"
     assert window.viewer.width() >= window.splitter.width() - 4
 
@@ -458,25 +459,25 @@ def test_editor_is_created_lazily_on_edit_mode(window):
     assert not window.editor.gutter.installed
 
 
-def test_edit_mode_updates_preview_live(qtbot, window):
+def test_edit_mode_updates_the_view_live(qtbot, window):
     edit_action(window).trigger()
     qtbot.keyClicks(window.editor.source, "# Fresh Heading")
     assert window.document.markdown == window.editor.source.toPlainText()
 
 
 def test_edit_mode_renders_after_the_typing_pause(qtbot, window):
-    """The preview is debounced, not dropped: it catches up when typing stops."""
+    """The rendered view is debounced, not dropped: it catches up when typing stops."""
     edit_action(window).trigger()
     qtbot.keyClicks(window.editor.source, "# Fresh Heading")
-    qtbot.waitUntil(lambda: "Fresh Heading" in preview_text(window), timeout=3000)
+    qtbot.waitUntil(lambda: "Fresh Heading" in viewer_text(window), timeout=3000)
 
 
 def test_leaving_edit_mode_renders_pending_edits_at_once(qtbot, window):
     edit_action(window).trigger()
     qtbot.keyClicks(window.editor.source, "# Fresh Heading")
     assert window.editor.timer.isActive()
-    edit_action(window).trigger()  # back to the full-width preview
-    assert "Fresh Heading" in preview_text(window)
+    edit_action(window).trigger()  # back to the full-width viewer
+    assert "Fresh Heading" in viewer_text(window)
 
 
 # ------------------------------------------------------------- undo and redo
@@ -571,11 +572,11 @@ def test_zoom_indicator_updates(window):
     assert label.text() == "100%"
 
 
-def test_editor_text_matches_the_preview_size(qtbot, window):
+def test_editor_text_matches_the_viewer_size(qtbot, window):
     """Both panes read at the same size; only the family differs."""
     edit_action(window).trigger()
     assert window.editor.source.font().pointSizeF() == pytest.approx(
-        preview_body_point_size()
+        viewer_body_point_size()
     )
 
 
@@ -583,7 +584,7 @@ def test_zoom_scales_the_editor_text_too(qtbot, window):
     edit_action(window).trigger()
     window.zoom_in()
     assert window.editor.source.font().pointSizeF() == pytest.approx(
-        preview_body_point_size() * 1.1
+        viewer_body_point_size() * 1.1
     )
 
 
@@ -629,13 +630,13 @@ def test_placeholder_is_rendered_without_a_file(qtbot):
     window.show()
     QApplication.processEvents()
     assert window.document.markdown == PLACEHOLDER_MD
-    assert "Drop a markdown file here" in preview_text(window)
+    assert "Drop a markdown file here" in viewer_text(window)
 
 
 def test_viewer_uses_the_qt_renderer_by_default(window):
     assert isinstance(window.viewer, QtMarkdownView)
-    assert window.preview.kind == RENDERER_QT
-    assert not window.actions.web_preview.isChecked()
+    assert window.viewer_area.kind == RENDERER_QT
+    assert not window.actions.web_renderer.isChecked()
 
 
 # ------------------------------------------------------------------- zoom
@@ -710,7 +711,7 @@ def test_relative_links_stay_relative_for_the_base_directory(window):
 
 def test_link_click_opens_external_url(monkeypatch):
     opened = []
-    monkeypatch.setattr(HeinoReader.webview, "open_external", opened.append)
+    monkeypatch.setattr(HeinoReader.viewer.web, "open_external", opened.append)
     page = MarkdownPage()
     accepted = page.acceptNavigationRequest(
         QUrl("https://example.org"),
@@ -723,7 +724,7 @@ def test_link_click_opens_external_url(monkeypatch):
 
 def test_link_click_opens_local_file(monkeypatch, tmp_path):
     opened = []
-    monkeypatch.setattr(HeinoReader.webview, "open_external", opened.append)
+    monkeypatch.setattr(HeinoReader.viewer.web, "open_external", opened.append)
     target = tmp_path / "other.md"
     page = MarkdownPage()
     accepted = page.acceptNavigationRequest(
@@ -839,6 +840,60 @@ def test_highlighter_styles_headings_bold_and_code(window):
     code = layout_formats(window.editor.source, "inline code")
     base = window.editor.source.palette().base().color()
     assert code.background().color() != base
+
+
+def test_a_fenced_block_stays_code_until_the_closing_fence(window):
+    """The block state must survive body lines and empty lines, then reset."""
+    edit_action(window).trigger()
+    source = window.editor.source
+    source.setPlainText(
+        "before **first**\n"
+        "```python\n"
+        "# not a heading\n"
+        "- not a list\n"
+        "\n"
+        "still code **literal**\n"
+        "```\n"
+        "after **second**\n"
+    )
+    QApplication.processEvents()
+
+    base = source.palette().base().color()
+    fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+
+    for line in ("```python", "# not a heading", "- not a list", "```"):
+        fmt = layout_formats(source, line)
+        assert fmt.font().family() == fixed.family()
+        assert fmt.background().color() != base
+
+    # Inside the fence no other rule may fire, not even a heading.
+    assert layout_formats(source, "# not a heading").fontWeight() < QFont.Weight.Bold
+    assert layout_formats(source, "- not a list").fontWeight() < QFont.Weight.Bold
+
+    # The empty line is part of the block, not its end.
+    assert layout_formats(source, "still code").background().color() != base
+    assert layout_formats(source, "literal").fontWeight() < QFont.Weight.Bold
+
+    # The closing fence resets the state: rules work again.
+    first = layout_formats(source, "first")
+    assert first.fontWeight() >= QFont.Weight.Bold
+    assert not first.fontItalic()
+    assert layout_formats(source, "second").fontWeight() >= QFont.Weight.Bold
+
+
+def test_bold_and_italics_do_not_override_each_other(window):
+    edit_action(window).trigger()
+    source = window.editor.source
+    source.setPlainText("plain *italic* and **bold**\n")
+    QApplication.processEvents()
+
+    italic = layout_formats(source, "italic")
+    bold = layout_formats(source, "bold")
+
+    assert italic.fontItalic()
+    assert italic.fontWeight() < QFont.Weight.Bold
+    assert bold.fontWeight() >= QFont.Weight.Bold
+    assert not bold.fontItalic()
 
 
 def test_tab_indents_selected_lines(qtbot, window):
@@ -1077,3 +1132,105 @@ def test_desktop_file_uses_a_relative_exec_command():
     )
     exec_lines = [l for l in desktop.splitlines() if l.startswith("Exec=")]
     assert exec_lines == ["Exec=heino-reader %f"]
+
+
+# ------------------------------------------------------- reloading from disk
+
+def test_an_external_change_reloads_a_clean_document(window, md_file):
+    md_file.write_text("# From disk\n", encoding="utf-8")
+
+    window._on_file_changed(str(md_file))
+
+    assert window.document.markdown == "# From disk\n"
+    assert window.document.is_modified is False
+
+
+def test_an_external_change_keeps_unsaved_edits_when_the_prompt_is_cancelled(
+    window, md_file, monkeypatch
+):
+    """Reloading must never silently throw away the user's text."""
+    window.document.markdown = "unsaved edit"
+    md_file.write_text("# From disk\n", encoding="utf-8")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "cancel"
+    )
+
+    window._on_file_changed(str(md_file))
+
+    assert window.document.markdown == "unsaved edit"
+
+
+def test_an_external_change_replaces_unsaved_edits_after_discarding(
+    window, md_file, monkeypatch
+):
+    window.document.markdown = "unsaved edit"
+    md_file.write_text("# From disk\n", encoding="utf-8")
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "discard"
+    )
+
+    window._on_file_changed(str(md_file))
+
+    assert window.document.markdown == "# From disk\n"
+
+
+def test_a_recreated_file_is_watched_again(window, md_file, monkeypatch):
+    added = []
+    monkeypatch.setattr(window.watcher, "files", list)
+    monkeypatch.setattr(window.watcher, "addPath", added.append)
+
+    window._on_file_changed(str(md_file))
+
+    # The reload attaches the path again through open(), hence twice.
+    assert str(md_file) in added
+
+
+# --------------------------------------------------------- backend switching
+
+def test_switching_to_the_web_backend_without_qtwebengine_explains(
+    window, monkeypatch
+):
+    shown = []
+    monkeypatch.setattr(
+        HeinoReader.window.QMessageBox,
+        "information",
+        staticmethod(lambda parent, title, text: shown.append((title, text))),
+    )
+    monkeypatch.setattr(window.viewer_area, "switch", lambda kind: False)
+
+    window.actions.web_renderer.trigger()
+
+    assert [title for title, _ in shown] == ["Web Engine Renderer unavailable"]
+    assert WEB_EXTRA_HINT in shown[0][1]
+    assert window.actions.web_renderer.isChecked() is False
+    assert window.viewer_area.kind == RENDERER_QT
+
+
+def test_an_unsaved_window_renders_relative_links_next_to_the_application(qtbot):
+    window = ViewerWindow()
+    qtbot.addWidget(window)
+
+    assert window._base_dir() == APP_DIR
+    assert window.viewer.base_dir == APP_DIR
+
+
+def test_the_close_prompt_can_save_instead_of_discarding(window, monkeypatch):
+    window.document.markdown = "changed"
+    monkeypatch.setattr(
+        HeinoReader.window, "ask_discard_changes", lambda parent, name: "save"
+    )
+    monkeypatch.setattr(window, "save", lambda: True)
+
+    assert window._confirm_discard() is True
+
+
+def test_saving_before_edit_mode_has_nothing_to_write(window):
+    assert window.save() is False
+
+
+def test_save_as_can_be_cancelled(window, monkeypatch):
+    edit_action(window).trigger()
+    monkeypatch.setattr(HeinoReader.window, "ask_save_file", lambda parent, start: None)
+
+    assert window.save_as() is False
+    assert window.document.path == window.document.path  # unchanged

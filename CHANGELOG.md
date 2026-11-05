@@ -4,13 +4,16 @@
 
 ### Added
 
-- Preview: `View → Wrap Code` (default on) keeps long code lines inside the
+- Viewer: `View → Wrap Code` (default on) keeps long code lines inside the
   text column.
+- Viewer: the zoom level is remembered across restarts.
 
 ### Fixed
 
-- Preview: the zoom applies to both renderers, so switching back no longer
+- Viewer: the zoom applies to both renderers, so switching back no longer
   restores an older value.
+- Editor: line numbers come back on startup when they were enabled.
+- Editor: `**bold**` is bold instead of italic.
 
 ## [0.2.2] - 2026-10-27
 
@@ -22,12 +25,12 @@
 
 ### Changed
 
-- Preview: debounced rendering, CSS line heights, lazy highlighting.
-- Editor: text size follows the preview and the zoom.
+- Viewer: debounced rendering, CSS line heights, lazy highlighting.
+- Editor: text size follows the viewer and the zoom.
 
 ### Fixed
 
-- Qt preview on HiDPI: font size and line spacing now follow `preview.css`.
+- Qt viewer on HiDPI: font size and line spacing now follow `document.css`.
 - Editor: unsaved changes, close prompt, title marker.
 
 ## [0.2.1] - 2026-10-27
@@ -41,7 +44,7 @@
 
 ### Added
 
-- UI hint for the optional Web Engine preview.
+- UI hint for the optional Web Engine renderer.
 - MIT license.
 
 ### Fixed

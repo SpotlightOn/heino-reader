@@ -14,7 +14,7 @@ from pathlib import Path
 MARKDOWN_SUFFIXES = frozenset(
     {".md", ".markdown", ".mdown", ".mkd", ".mdx", ".mdtxt", ".mdtext"}
 )
-# Plain text is harmless and useful to preview, so it is accepted too.
+# Plain text is harmless and useful to display, so it is accepted too.
 TEXT_SUFFIXES = MARKDOWN_SUFFIXES | {".txt", ".text"}
 
 # Refuse absurdly large files instead of exhausting memory.

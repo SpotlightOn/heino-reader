@@ -41,7 +41,7 @@ def build_menu(window: ViewerWindow) -> None:
     view_menu.addAction(actions.remote_images)
     view_menu.addAction(actions.wrap_code)
     view_menu.addSeparator()
-    view_menu.addAction(actions.web_preview)
+    view_menu.addAction(actions.web_renderer)
 
     help_menu = window.menuBar().addMenu("&Help")
     help_menu.addAction(actions.about)

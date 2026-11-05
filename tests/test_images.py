@@ -1,16 +1,16 @@
-"""Tests for image handling and the text column in both preview backends."""
+"""Tests for image handling and the text column in both renderers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QByteArray, QObject, Signal
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtCore import QByteArray, QObject, QUrl, Signal
+from PySide6.QtGui import QColor, QImage, QTextDocument, QTextImageFormat
 from PySide6.QtNetwork import QNetworkReply
+from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo
 from PySide6.QtWidgets import QApplication
 
-from HeinoReader.images import RemoteImageLoader, placeholder_image, svg_to_image
 from HeinoReader.layout import (
     DOCUMENT_MARGIN,
     MAX_CONTENT_WIDTH,
@@ -19,8 +19,15 @@ from HeinoReader.layout import (
     content_layout,
     vertical_margins,
 )
-from HeinoReader.preview import RENDERER_QT, RENDERER_WEB
-from HeinoReader.render import PREVIEW_CSS, markdown_to_html, render_html_document
+from HeinoReader.viewer import RENDERER_QT, RENDERER_WEB
+from HeinoReader.viewer.images import RemoteImageLoader, placeholder_image, svg_to_image
+from HeinoReader.viewer.qt import QtMarkdownView
+from HeinoReader.viewer.render import (
+    DOCUMENT_CSS,
+    markdown_to_html,
+    render_html_document,
+)
+from HeinoReader.viewer.web import RemoteImageFilter
 from HeinoReader.window import ViewerWindow
 
 
@@ -116,7 +123,7 @@ def test_qt_images_refit_when_the_window_shrinks(qtbot, qt_window):
 # ------------------------------------------------------- WebEngine backend
 
 def test_theme_limits_image_width():
-    assert "max-width: 100%" in PREVIEW_CSS
+    assert "max-width: 100%" in DOCUMENT_CSS
 
 
 def test_web_document_keeps_the_relative_image_source(web_window):
@@ -124,7 +131,7 @@ def test_web_document_keeps_the_relative_image_source(web_window):
     assert 'src="big.png"' in html
 
 
-def test_web_preview_resolves_relative_images_via_the_base_dir(web_window, tmp_path):
+def test_web_renderer_resolves_relative_images_via_the_base_dir(web_window, tmp_path):
     assert web_window.viewer.base_dir == tmp_path
 
 
@@ -175,17 +182,17 @@ def test_vertical_margins_handle_zero_height():
 
 
 def test_web_theme_scales_its_vertical_padding_with_the_viewport():
-    assert "max(32px, 6vh)" in PREVIEW_CSS
+    assert "max(32px, 6vh)" in DOCUMENT_CSS
 
 
-def test_qt_preview_sets_the_side_margin_from_the_layout(qt_window):
+def test_qt_viewer_sets_the_side_margin_from_the_layout(qt_window):
     _, margin = content_layout(qt_window.viewer.viewport().width())
     frame_format = qt_window.viewer.document().rootFrame().frameFormat()
     assert round(frame_format.leftMargin()) == margin
     assert round(frame_format.rightMargin()) == margin
 
 
-def test_qt_preview_leaves_more_room_above_and_below_than_at_the_sides(
+def test_qt_viewer_leaves_more_room_above_and_below_than_at_the_sides(
     qt_window,
 ):
     """The first and last line must not touch the window edge."""
@@ -331,3 +338,155 @@ def test_undecodable_download_emits_failure(qapp):
 
     assert failures == [url]
     assert loader.cached(url) is None
+
+
+# ------------------------------------------- Qt backend: remote image state
+
+class RecordingLoader:
+    """Stand-in for RemoteImageLoader: no network, records requests."""
+
+    def __init__(self, cached=None):
+        self.fetched = []
+        self.store = dict(cached or {})
+
+    def cached(self, url):
+        return self.store.get(url)
+
+    def fetch(self, url):
+        self.fetched.append(url)
+
+
+def make_remote_view(qtbot, url, loader, *, enabled=True):
+    view = QtMarkdownView()
+    qtbot.addWidget(view)
+    view.resize(500, 300)
+    view._remote = loader
+    view.set_remote_images_enabled(enabled)
+    view.set_markdown(f"![alt]({url})")
+    view.show()
+    QApplication.processEvents()
+    return view
+
+
+def image_resource(view, url):
+    return view.document().resource(
+        QTextDocument.ResourceType.ImageResource, QUrl(url)
+    )
+
+
+def test_qt_remote_image_shows_a_placeholder_and_requests_it(qtbot):
+    url = "https://example.org/badge.png"
+    loader = RecordingLoader()
+
+    view = make_remote_view(qtbot, url, loader)
+
+    placeholder = image_resource(view, url)
+    assert isinstance(placeholder, QImage) and not placeholder.isNull()
+    assert loader.fetched == [url]
+
+
+def test_qt_remote_image_from_the_cache_is_not_requested_again(qtbot):
+    url = "https://example.org/badge.png"
+    cached = QImage(20, 10, QImage.Format.Format_ARGB32)
+    loader = RecordingLoader({url: cached})
+
+    view = make_remote_view(qtbot, url, loader)
+
+    assert loader.fetched == []
+    assert image_resource(view, url).size() == cached.size()
+
+
+def test_qt_remote_image_is_not_requested_while_disabled(qtbot):
+    url = "https://example.org/badge.png"
+    loader = RecordingLoader()
+
+    view = make_remote_view(qtbot, url, loader, enabled=False)
+
+    assert loader.fetched == []
+    assert not image_resource(view, url).isNull()
+
+
+def test_qt_remote_image_replaces_the_placeholder_when_it_arrives(qtbot):
+    url = "https://example.org/badge.png"
+    loader = RecordingLoader()
+    view = make_remote_view(qtbot, url, loader)
+    downloaded = QImage(40, 20, QImage.Format.Format_ARGB32)
+
+    view._on_remote_loaded(url, downloaded)
+    QApplication.processEvents()
+
+    assert image_resource(view, url).size() == downloaded.size()
+
+
+def test_qt_remote_image_falls_back_to_the_placeholder_on_failure(qtbot):
+    url = "https://example.org/badge.png"
+    loader = RecordingLoader()
+    view = make_remote_view(qtbot, url, loader)
+
+    view._on_remote_failed(url)
+    QApplication.processEvents()
+
+    assert not image_resource(view, url).isNull()
+
+
+def test_qt_image_without_a_resource_is_not_scaled(qtbot, image_doc):
+    window = ViewerWindow(image_doc)
+    qtbot.addWidget(window)
+    view = window.viewer
+    image = QTextImageFormat()
+    image.setName("missing.png")
+
+    assert view._fit_image(view.document(), image, 100) is False
+
+
+# -------------------------------------------------- WebEngine: image filter
+
+class FakeRequestInfo:
+    """Duck-typed QWebEngineUrlRequestInfo; the real one cannot be built."""
+
+    def __init__(self, resource_type, url):
+        self._type = resource_type
+        self._url = QUrl(url)
+        self.blocked = None
+
+    def resourceType(self):
+        return self._type
+
+    def requestUrl(self):
+        return self._url
+
+    def block(self, flag):
+        self.blocked = flag
+
+
+def request_info(resource_type, url):
+    return FakeRequestInfo(resource_type, url)
+
+
+IMAGE = QWebEngineUrlRequestInfo.ResourceType.ResourceTypeImage
+STYLESHEET = QWebEngineUrlRequestInfo.ResourceType.ResourceTypeStylesheet
+
+
+def test_web_image_filter_blocks_remote_images_only_when_disabled():
+    filter_ = RemoteImageFilter()
+    info = request_info(IMAGE, "https://example.org/badge.png")
+
+    filter_.interceptRequest(info)
+    assert info.blocked is None  # enabled by default
+
+    filter_.enabled = False
+    filter_.interceptRequest(info)
+    assert info.blocked is True
+
+
+def test_web_image_filter_leaves_local_images_and_other_requests_alone():
+    filter_ = RemoteImageFilter()
+    filter_.enabled = False
+    local = request_info(IMAGE, "file:///tmp/badge.png")
+    stylesheet = request_info(STYLESHEET, "https://example.org/theme.css")
+
+    filter_.interceptRequest(local)
+    filter_.interceptRequest(stylesheet)
+
+    assert local.blocked is None
+    assert stylesheet.blocked is None

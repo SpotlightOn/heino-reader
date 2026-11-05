@@ -1,9 +1,9 @@
-"""Markdown to HTML rendering for the preview, plus relative path rewriting.
+"""Markdown to HTML rendering for the viewer, plus relative path rewriting.
 
 Everything in this module is GUI-free: it turns markdown text into HTML
-and a stylesheet that the preview widget applies. Qt's built-in
+and a stylesheet that the viewer widget applies. Qt's built-in
 ``setMarkdown()`` renderer is avoided because its markdown coverage and
-styling options are too limited for a faithful preview.
+styling options are too limited for a faithful rendering.
 """
 
 from __future__ import annotations
@@ -86,8 +86,8 @@ def _make_parser(*, qt: bool) -> MarkdownIt:
 _parser = _make_parser(qt=False)
 _qt_parser = _make_parser(qt=True)
 
-_CSS_PATH = Path(__file__).with_name("preview.css")
-PREVIEW_CSS = _CSS_PATH.read_text(encoding="utf-8")
+_CSS_PATH = Path(__file__).with_name("document.css")
+DOCUMENT_CSS = _CSS_PATH.read_text(encoding="utf-8")
 
 # One CSS pixel is 1/96 inch, one point is 1/72 inch.
 _CSS_PX_PER_PT = 96.0 / 72.0
@@ -109,7 +109,7 @@ def _declarations(css: str, selectors: frozenset[str]) -> str:
     """All declarations of every rule whose selector list names one of them.
 
     Rules are merged in file order, so a later declaration wins — the same way
-    a browser would apply them. ``preview.css`` opens with
+    a browser would apply them. ``document.css`` opens with
     ``html, body { margin: 0; padding: 0 }`` before the real body rule, and
     both have to be taken into account.
 
@@ -127,9 +127,9 @@ def _declarations(css: str, selectors: frozenset[str]) -> str:
     return "\n".join(blocks)
 
 
-def preview_font_families(css: str | None = None) -> list[str]:
-    """Font families of the preview theme, in fallback order."""
-    block = _declarations(PREVIEW_CSS if css is None else css, frozenset({"body"}))
+def viewer_font_families(css: str | None = None) -> list[str]:
+    """Font families of the document theme, in fallback order."""
+    block = _declarations(DOCUMENT_CSS if css is None else css, frozenset({"body"}))
     match = _FONT_FAMILY_RE.search(block)
     if match is None:
         return []
@@ -137,15 +137,15 @@ def preview_font_families(css: str | None = None) -> list[str]:
     return [family for family in families if family]
 
 
-def preview_body_point_size(css: str | None = None) -> float:
-    """Body font size of the preview theme, in points.
+def viewer_body_point_size(css: str | None = None) -> float:
+    """Body font size of the document theme, in points.
 
     Qt sizes fonts in points and scales them with the screen DPI, while CSS
     pixel sizes are not DPI aware inside ``QTextDocument``. The stylesheet
     therefore keeps its px declarations for the WebEngine backend, and only
     the Qt backend converts the body size once: Qt does the rest.
     """
-    block = _declarations(PREVIEW_CSS if css is None else css, frozenset({"body"}))
+    block = _declarations(DOCUMENT_CSS if css is None else css, frozenset({"body"}))
     match = _FONT_SIZE_RE.search(block)
     if match is None:
         return _FALLBACK_POINT_SIZE
@@ -155,7 +155,7 @@ def preview_body_point_size(css: str | None = None) -> float:
     return value / _CSS_PX_PER_PT
 
 
-def preview_line_height(*, heading: bool = False, css: str | None = None) -> float | None:
+def viewer_line_height(*, heading: bool = False, css: str | None = None) -> float | None:
     """CSS ``line-height`` of headings or body text, as a factor.
 
     CSS multiplies the font size (``1.55`` = 1.55 × font size); Qt reads the
@@ -164,7 +164,7 @@ def preview_line_height(*, heading: bool = False, css: str | None = None) -> flo
     means the stylesheet does not declare one.
     """
     selectors = _HEADING_SELECTORS if heading else frozenset({"body"})
-    block = _declarations(PREVIEW_CSS if css is None else css, selectors)
+    block = _declarations(DOCUMENT_CSS if css is None else css, selectors)
     match = _LINE_HEIGHT_RE.search(block)
     if match is None:
         return None
@@ -222,9 +222,9 @@ def qt_stylesheet(
     *,
     wrap_code: bool = True,
 ) -> str:
-    """The preview stylesheet with line heights Qt can use as they are.
+    """The document stylesheet with line heights Qt can use as they are.
 
-    ``preview.css`` states line heights the CSS way (``1.55``, ``125%``). Qt
+    ``document.css`` states line heights the CSS way (``1.55``, ``125%``). Qt
     parses the same number as a share of the font's natural line height and
     would render the text far too tight, so every declaration is rewritten as
     the equivalent percentage. Fixed lengths (``px``, ``pt``) do not scale
@@ -238,7 +238,7 @@ def qt_stylesheet(
     ``wrap_code`` lets code lines wrap, which the shared file must not do: a
     browser scrolls a ``pre``, Qt widens the whole document instead.
     """
-    sheet = PREVIEW_CSS if css is None else css
+    sheet = DOCUMENT_CSS if css is None else css
 
     def rewrite(match: re.Match[str]) -> str:
         unit = (match.group(3) or "").lower()
@@ -250,7 +250,7 @@ def qt_stylesheet(
     parts = [_LINE_HEIGHT_DECL_RE.sub(rewrite, sheet)]
     if wrap_code:
         parts.append(_PRE_WRAP_RULE)
-    body = preview_line_height(css=sheet)
+    body = viewer_line_height(css=sheet)
     if body is not None:
         percent = _qt_percent(body, "", pixel_per_natural)
         parts.append(f"{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}")
@@ -258,7 +258,7 @@ def qt_stylesheet(
 
 
 def render_html_document(text: str, *, wrap_code: bool = True) -> str:
-    """Render markdown to a complete HTML document for the web preview.
+    """Render markdown to a complete HTML document for the web renderer.
 
     ``wrap_code`` targets the same preference as the Qt backend: the browser
     scrolls an overflowing ``pre`` on its own, so wrapping is only applied when
@@ -268,7 +268,7 @@ def render_html_document(text: str, *, wrap_code: bool = True) -> str:
     wrap = _PRE_WRAP_RULE if wrap_code else ""
     return (
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        f"<style>{PREVIEW_CSS}</style><style>{wrap}</style></head>"
+        f"<style>{DOCUMENT_CSS}</style><style>{wrap}</style></head>"
         f"<body>{body}</body></html>"
     )
 

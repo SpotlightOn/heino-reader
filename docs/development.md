@@ -39,22 +39,24 @@ src/HeinoReader/      the package
   window.py             the main window: wiring, files, edit mode, zoom
   document.py           the open file: text, path, modified state (no widgets)
   editpane.py           source editor, gutter and typing delay
-  preview.py            the preview backends and the one on screen
   chrome.py             menu bar and toolbars
   actions.py            every action: icon, shortcut, tooltip, handler
   texts.py              about text, start screen, toolbar style
-  render.py             markdown to HTML, path helpers
-  qtview.py             QTextEdit preview backend (default)
-  webview.py            QtWebEngine preview backend (opt-in, lazy import)
-  images.py             remote image loading for the Qt backend
   layout.py             text column geometry
   files.py              file validation (no binary/oversized files)
   settings.py           persistent settings in the XDG config directory
   icons.py              toolbar icons (Material SVGs, theme fallbacks)
   utils.py              small shared helpers
-  preview.css           the preview theme (edit freely)
   icon.svg              the application icon
   icons/                bundled Material Symbols SVGs
+  viewer/               the document display subsystem
+    __init__.py           the two backends and the one on screen
+    qt.py                 QTextEdit backend (default)
+    web.py                QtWebEngine backend (opt-in, lazy import)
+    render.py             markdown to HTML, path helpers
+    highlighting.py       Pygments colors for fenced code
+    images.py             remote image loading for the Qt backend
+    document.css          the document theme (edit freely)
   editor/               the source markdown editor subsystem
     __init__.py           public API of the subpackage
     source_edit.py        plain-text editor, Tab indent, quote bar
@@ -68,11 +70,16 @@ main.py               entry point for PyInstaller builds
 ```
 
 `window.py` is a composition root: it wires `document.py`, `editpane.py`,
-`preview.py` and `chrome.py` together and owns the file lifecycle. Actions are
+`viewer/` and `chrome.py` together and owns the file lifecycle. Actions are
 defined once in `actions.py`; `chrome.py` only decides where they appear. The
-`editor/` subpackage is self-contained: it imports only Qt and its own sibling
-modules, never the top-level package, so there are no circular imports. Tests
-import a name from the module that owns it, not from the package root.
+`viewer/` subpackage holds everything that paints the document: the Qt and the
+QtWebEngine backend share `render.py` and differ only in where the HTML goes.
+`web.py` is the only module that imports `PySide6.QtWebEngine*`, and it is
+imported lazily from `viewer/__init__.py`, so a Qt-rendered start never loads
+Chromium. The `editor/` subpackage is self-contained: it imports only Qt and
+its own sibling modules, never the top-level package, so there are no circular
+imports. Tests import a name from the module that owns it, not from the
+package root.
 
 ## Naming
 

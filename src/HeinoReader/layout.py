@@ -1,4 +1,4 @@
-"""Text column layout shared by the preview backends."""
+"""Text column layout shared by the renderers."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def content_layout(viewport_width: int) -> tuple[int, int]:
 def vertical_margins(viewport_height: int) -> tuple[int, int]:
     """Top and bottom margin for the text column, in pixels.
 
-    The preview needs clearly more air above and below than at the sides:
+    The viewer needs clearly more air above and below than at the sides:
     the text starts below the toolbar instead of underneath it, and the last
     line does not sit on the window edge. The value grows with the window
     height, so a maximised window does not look cramped while a small one

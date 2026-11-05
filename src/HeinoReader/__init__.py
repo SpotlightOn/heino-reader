@@ -12,13 +12,13 @@ Usage:
 
 The package is a set of small modules rather than one API surface:
 
-    window.py     wires document, editor, preview and chrome together
-    document.py   the open file: its text, path and modified state
-    editpane.py   the markdown editor with gutter and typing delay
-    preview.py    the two preview backends and the one on screen
-    chrome.py     menu bar and toolbars, built from the actions
-    actions.py    every action with icon, shortcut and handler
-    render.py     markdown and CSS to HTML, shared by both backends
+    window.py       wires document, editor, viewer and chrome together
+    document.py     the open file: its text, path and modified state
+    editpane.py     the markdown editor with gutter and typing delay
+    viewer/         the two document backends and the one on screen
+    chrome.py       menu bar and toolbars, built from the actions
+    actions.py      every action with icon, shortcut and handler
+    viewer/render.py  markdown and CSS to HTML, shared by both backends
 """
 
 from __future__ import annotations

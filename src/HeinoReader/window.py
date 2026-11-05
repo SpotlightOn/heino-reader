@@ -1,4 +1,4 @@
-"""The main window: wiring for document, editor, preview and chrome."""
+"""The main window: wiring for document, editor, viewer and chrome."""
 
 from __future__ import annotations
 
@@ -22,22 +22,23 @@ from .editor import ask_image, ask_link_url, ask_table_size, formatting
 from .editpane import EditorPane
 from .files import is_supported_path, rejection_reason
 from .icons import APP_DIR
-from .preview import (
-    DEFAULT_RENDERER,
-    RENDERER_QT,
-    RENDERER_WEB,
-    RENDERERS,
-    PreviewArea,
-    chosen_renderer,
-)
 from .settings import (
     LINE_NUMBERS_KEY,
     REMOTE_IMAGES_KEY,
     RENDERER_KEY,
+    SCALE_KEY,
     WRAP_CODE_KEY,
     Settings,
 )
 from .texts import ABOUT_TEXT, PLACEHOLDER_MD, WEB_EXTRA_HINT
+from .viewer import (
+    DEFAULT_RENDERER,
+    RENDERER_QT,
+    RENDERER_WEB,
+    RENDERERS,
+    ViewerArea,
+    chosen_renderer,
+)
 
 ZOOM_STEP = 0.1
 MIN_SCALE = 0.5
@@ -110,7 +111,7 @@ class ViewerWindow(QMainWindow):
 
         remembered = self.settings.get_string(RENDERER_KEY, DEFAULT_RENDERER)
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self.preview = PreviewArea(
+        self.viewer_area = ViewerArea(
             self.splitter, self, chosen_renderer(renderer, remembered), APP_DIR
         )
         self.setCentralWidget(self.splitter)
@@ -128,7 +129,7 @@ class ViewerWindow(QMainWindow):
         self.actions = Actions(self)
         build_menu(self)
         build_toolbars(self)
-        self.set_scale(1.0)
+        self.set_scale(self.settings.get_float(SCALE_KEY, 1.0))
         self._sync_view_options()
 
         if path is not None:
@@ -139,8 +140,8 @@ class ViewerWindow(QMainWindow):
 
     @property
     def viewer(self) -> QWidget:
-        """The preview widget currently in the splitter."""
-        return self.preview.view
+        """The viewer widget currently in the splitter."""
+        return self.viewer_area.view
 
     # ------------------------------------------------------- formatting
 
@@ -258,7 +259,7 @@ class ViewerWindow(QMainWindow):
         path = self.document.path
         if path is None:
             return
-        self.preview.set_base_dir(path.parent)
+        self.viewer_area.set_base_dir(path.parent)
         watched = self.watcher.files()
         if watched:
             self.watcher.removePaths(watched)
@@ -342,40 +343,40 @@ class ViewerWindow(QMainWindow):
         self.render_now()
 
     def _sync_view_options(self) -> None:
-        """Apply the View-menu toggles to the current preview backend."""
-        self.preview.apply_options(
+        """Apply the View-menu toggles to the current backend."""
+        self.viewer_area.apply_options(
             remote_images=self.actions.remote_images.isChecked(),
             wrap_code=self.actions.wrap_code.isChecked(),
         )
 
     @Slot(bool)
-    def set_web_preview(self, enabled: bool) -> None:
+    def set_web_renderer(self, enabled: bool) -> None:
         """Switch between the WebEngine and the Qt text renderer."""
         self._set_renderer(RENDERER_WEB if enabled else RENDERER_QT)
 
     def _set_renderer(self, kind: str) -> None:
-        """Swap the preview widget for the other backend."""
-        if kind not in RENDERERS or kind == self.preview.kind:
+        """Swap the viewer widget for the other backend."""
+        if kind not in RENDERERS or kind == self.viewer_area.kind:
             return
-        if not self.preview.switch(kind):
+        if not self.viewer_area.switch(kind):
             # pyside6-addons is missing: keep the current backend and
             # explain instead of dying on a lazy import.
             QMessageBox.information(
-                self, "Web Engine Preview unavailable", WEB_EXTRA_HINT
+                self, "Web Engine Renderer unavailable", WEB_EXTRA_HINT
             )
-            self._check_web_preview(False)
+            self._check_web_renderer(False)
             return
-        self.preview.set_base_dir(self._base_dir())
+        self.viewer_area.set_base_dir(self._base_dir())
         self._sync_view_options()
         self.settings.set_string(RENDERER_KEY, kind)
-        self._check_web_preview(kind == RENDERER_WEB)
+        self._check_web_renderer(kind == RENDERER_WEB)
         self.render_now()
 
-    def _check_web_preview(self, checked: bool) -> None:
+    def _check_web_renderer(self, checked: bool) -> None:
         """Set the menu state without firing the toggle handler."""
-        self.actions.web_preview.blockSignals(True)
-        self.actions.web_preview.setChecked(checked)
-        self.actions.web_preview.blockSignals(False)
+        self.actions.web_renderer.blockSignals(True)
+        self.actions.web_renderer.setChecked(checked)
+        self.actions.web_renderer.blockSignals(False)
 
     def _base_dir(self) -> Path:
         """Directory relative links and images resolve against."""
@@ -399,17 +400,22 @@ class ViewerWindow(QMainWindow):
 
     def set_scale(self, scale: float) -> None:
         self.scale = max(MIN_SCALE, min(MAX_SCALE, round(scale, 2)))
-        self.preview.set_zoom(self.scale)
+        self.viewer_area.set_zoom(self.scale)
         self.editor.set_zoom(self.scale)
         self.zoom_label.setText(f"{round(self.scale * 100)}%")
+        self.settings.set_string(SCALE_KEY, str(self.scale))
 
     # --------------------------------------------------------- edit mode
 
     @Slot(bool)
     def set_edit_mode(self, enabled: bool) -> None:
-        """Split the window (source left, preview right) or show preview only."""
+        """Split the window (source left, viewer right) or show the viewer only."""
         if enabled:
             source = self.editor.ensure()
+            # The gutter only exists now; apply the remembered preference.
+            self.editor.apply_line_numbers(
+                self.actions.line_numbers.isChecked()
+            )
             if source.toPlainText() != self.document.markdown:
                 self.editor.set_text(self.document.markdown)
             self._widen_for_edit()
@@ -417,10 +423,10 @@ class ViewerWindow(QMainWindow):
             half = max(self.splitter.width() // 2, 1)
             self.splitter.setSizes([half, half])
         else:
-            # QSplitter skips hidden widgets, so the preview takes over.
+            # QSplitter skips hidden widgets, so the viewer takes over.
             self.editor.set_visible(False)
             self._restore_pre_edit_geometry()
-            # Leaving edit mode exposes the preview: skip the debounce wait.
+            # Leaving edit mode exposes the viewer: skip the debounce wait.
             if self.editor.timer.isActive():
                 self.render_now()
         self._update_edit_actions()
@@ -454,7 +460,7 @@ class ViewerWindow(QMainWindow):
 
     @Slot()
     def _text_edited(self) -> None:
-        """Mirror the buffer; the preview waits for the typing to pause.
+        """Mirror the buffer; the viewer waits for the typing to pause.
 
         The text is taken over immediately - saving must not lag behind -
         while the render is started by the editor's timer.
@@ -465,13 +471,13 @@ class ViewerWindow(QMainWindow):
     # ------------------------------------------------------------- render
 
     def render(self) -> None:
-        """Show the document in the preview."""
-        self.preview.set_markdown(self.document.markdown)
+        """Show the document in the viewer."""
+        self.viewer_area.set_markdown(self.document.markdown)
 
     def render_now(self) -> None:
-        """Render at once, dropping a pending live-preview update.
+        """Render at once, dropping a pending live-render update.
 
-        Used wherever a stale preview would be visible: opening a file,
+        Used wherever a stale view would be visible: opening a file,
         switching the backend, changing the remote-image setting.
         """
         self.editor.timer.stop()

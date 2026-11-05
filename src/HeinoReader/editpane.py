@@ -8,18 +8,18 @@ from PySide6.QtWidgets import QSplitter
 
 from .editor import LineNumberGutter, MarkdownSourceEdit
 from .layout import DOCUMENT_MARGIN
-from .render import preview_body_point_size
+from .viewer.render import viewer_body_point_size
 
-# Wait this long after the last keystroke before the preview re-renders. One
+# Wait this long after the last keystroke before the viewer re-renders. One
 # render per short note is cheap, but a long document costs real time and
-# typing does not need a fresh preview per character.
-LIVE_PREVIEW_DELAY_MS = 200
+# typing does not need a fresh render per character.
+LIVE_RENDER_DELAY_MS = 200
 
 
 class EditorPane:
     """The raw markdown editor, created on first use.
 
-    A plain preview start never builds the editor, its syntax highlighter or
+    A view-only start never builds the editor, its syntax highlighter or
     its gutter; they appear with the first switch to edit mode.
     """
 
@@ -32,7 +32,7 @@ class EditorPane:
         self._scale = 1.0
         self.timer = QTimer()
         self.timer.setSingleShot(True)
-        self.timer.setInterval(LIVE_PREVIEW_DELAY_MS)
+        self.timer.setInterval(LIVE_RENDER_DELAY_MS)
 
     def ensure(self) -> MarkdownSourceEdit:
         """Create the editor and its gutter on first use."""
@@ -50,7 +50,7 @@ class EditorPane:
         self._splitter.insertWidget(0, source)
         self.source = source
         # Follow the zoom that was set before the editor existed.
-        source.set_text_point_size(preview_body_point_size() * self._scale)
+        source.set_text_point_size(viewer_body_point_size() * self._scale)
         return source
 
     @property
@@ -71,10 +71,10 @@ class EditorPane:
             self.source.setVisible(visible)
 
     def set_zoom(self, scale: float) -> None:
-        """Give the source pane the preview's text size in its own font."""
+        """Give the source pane the view's text size in its own font."""
         self._scale = scale
         if self.source is not None:
-            self.source.set_text_point_size(preview_body_point_size() * scale)
+            self.source.set_text_point_size(viewer_body_point_size() * scale)
 
     def apply_line_numbers(self, enabled: bool) -> None:
         """Show or hide the gutter; a no-op before the editor exists."""

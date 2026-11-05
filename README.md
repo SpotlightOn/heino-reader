@@ -52,8 +52,8 @@ without touching your system Python. None of this needs root rights.
 
 - **Instant.** No Chromium in the default renderer — just Qt's text engine.
 - **Read-only first.** Nothing changes by accident; edit mode is one click away.
-- **Live reload.** Save in your editor, the preview follows.
-- **Split editing when you want it.** Source on the left, live preview on the
+- **Live reload.** Save in your editor, the view follows.
+- **Split editing when you want it.** Source on the left, live view on the
   right — like Ghostwriter, with a formatting toolbar and shortcuts.
 - **Light.** ~260 MB installed — no Electron, no bundled browser process.
 - **Native desktop app.** Drag & drop, `.md` file association, links opened with
