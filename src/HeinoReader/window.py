@@ -403,7 +403,10 @@ class ViewerWindow(QMainWindow):
         self.viewer_area.set_zoom(self.scale)
         self.editor.set_zoom(self.scale)
         self.zoom_label.setText(f"{round(self.scale * 100)}%")
-        self.settings.set_string(SCALE_KEY, str(self.scale))
+        # set_string() syncs the whole file, so skip it when the stored value
+        # already matches (every startup would otherwise rewrite it).
+        if self.settings.get_string(SCALE_KEY) != str(self.scale):
+            self.settings.set_string(SCALE_KEY, str(self.scale))
 
     # --------------------------------------------------------- edit mode
 

@@ -125,6 +125,27 @@ def test_zoom_and_line_numbers_survive_a_restart(qtbot, tmp_path):
     assert second.editor.gutter.installed
 
 
+def test_reopening_with_the_stored_zoom_does_not_rewrite_settings(
+    qtbot, tmp_path, monkeypatch
+):
+    """Every QSettings write syncs the file, so an unchanged value is skipped."""
+    Settings().set_string(SCALE_KEY, "1.3")
+    doc = tmp_path / "doc.md"
+    doc.write_text("# Title\n", encoding="utf-8")
+    written = []
+    monkeypatch.setattr(
+        Settings,
+        "set_string",
+        lambda _self, key, value: written.append((key, value)),
+    )
+
+    window = ViewerWindow(doc)
+    qtbot.addWidget(window)
+
+    assert window.scale == pytest.approx(1.3)
+    assert written == []
+
+
 @pytest.mark.parametrize(
     ("stored", "expected"),
     [("99", MAX_SCALE), ("0.01", MIN_SCALE)],

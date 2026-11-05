@@ -77,8 +77,9 @@ class QtMarkdownView(QTextEdit):
         # The base font is therefore the document font, the line heights are
         # re-referenced to Qt's own metrics by qt_stylesheet(), and the
         # relative heading sizes are Qt's own HTML scale.
-        self.setFont(viewer_font(self._scale))
-        self.document().setDefaultFont(viewer_font(self._scale))
+        font = viewer_font(self._scale)
+        self.setFont(font)
+        self.document().setDefaultFont(font)
         self._apply_stylesheet()
 
     # --------------------------------------------------------------- API
@@ -125,7 +126,10 @@ class QtMarkdownView(QTextEdit):
 
         The stylesheet only affects the next ``setHtml()``, so the caller
         re-renders the document (``ViewerWindow._render_now``) afterwards.
+        Setting the value it already has costs nothing.
         """
+        if enabled == self._wrap_code:
+            return
         self._wrap_code = enabled
         self._apply_stylesheet()
 
@@ -133,6 +137,8 @@ class QtMarkdownView(QTextEdit):
         self._remote_enabled = enabled
 
     def set_zoom(self, scale: float) -> None:
+        if scale == self._scale:
+            return
         self._scale = scale
         font = viewer_font(scale)
         self.setFont(font)
