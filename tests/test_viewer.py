@@ -21,12 +21,19 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-import HeinoReader
 import HeinoReader.icons
+import HeinoReader.webview
 import HeinoReader.window
-from HeinoReader import ViewerWindow, main
+from HeinoReader.cli import main
+from HeinoReader.editor import MarkdownHighlighter, MarkdownSourceEdit
+from HeinoReader.icons import APP_DIR, ICONS_DIR, _material_icon
+from HeinoReader.preview import RENDERER_QT
+from HeinoReader.qtview import QtMarkdownView
+from HeinoReader.render import markdown_to_html, preview_body_point_size
 from HeinoReader.settings import WRAP_CODE_KEY
+from HeinoReader.texts import PLACEHOLDER_MD
 from HeinoReader.webview import MarkdownPage
+from HeinoReader.window import EDIT_MODE_WIDTH, ViewerWindow
 
 
 def make_window(qtbot, path):
@@ -119,7 +126,7 @@ def test_open_menu_item_loads_file(window, tmp_path, monkeypatch):
     menu_action(window, "File", "Open...").trigger()
     assert chosen, "file dialog was not invoked"
     assert "opened.md" in window.windowTitle()
-    assert "Opened Document" in window._markdown
+    assert "Opened Document" in window.document.markdown
 
 
 def test_save_is_disabled_in_view_mode(window):
@@ -137,23 +144,23 @@ def test_save_follows_edit_mode_toggle(window):
 
 def test_save_writes_the_edit_buffer(qtbot, window, md_file):
     edit_action(window).trigger()
-    qtbot.keyClicks(window._source, "#X")
+    qtbot.keyClicks(window.editor.source, "#X")
     menu_action(window, "File", "Save").trigger()
-    assert md_file.read_text(encoding="utf-8") == window._source.toPlainText()
+    assert md_file.read_text(encoding="utf-8") == window.editor.source.toPlainText()
 
 
 def test_save_as_writes_a_new_file_and_keeps_editing_it(
     qtbot, window, tmp_path, monkeypatch
 ):
     edit_action(window).trigger()
-    window._source.setPlainText("# Copy\n")
+    window.editor.source.setPlainText("# Copy\n")
     target = tmp_path / "copy.md"
     monkeypatch.setattr(HeinoReader.window, "ask_save_file", lambda parent, start: target)
 
     menu_action(window, "File", "Save As...").trigger()
 
     assert target.read_text(encoding="utf-8") == "# Copy\n"
-    assert window._path == target
+    assert window.document.path == target
     assert "copy.md" in window.windowTitle()
     assert menu_action(window, "File", "Save").isEnabled()
 
@@ -162,25 +169,25 @@ def test_save_as_works_without_an_open_file(qtbot, tmp_path, monkeypatch):
     window = ViewerWindow()
     qtbot.addWidget(window)
     window.show()
-    window._edit_action.trigger()
+    window.actions.edit_mode.trigger()
     target = tmp_path / "new.md"
     monkeypatch.setattr(HeinoReader.window, "ask_save_file", lambda parent, start: target)
 
     menu_action(window, "File", "Save As...").trigger()
 
     assert "heino reader" in target.read_text(encoding="utf-8").lower()
-    assert window._path == target
+    assert window.document.path == target
 
 
 def test_save_as_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
-    window._source.setPlainText("unchanged")
+    window.editor.source.setPlainText("unchanged")
     monkeypatch.setattr(
         HeinoReader.window, "ask_save_file", lambda parent, start: None
     )
     menu_action(window, "File", "Save As...").trigger()
-    assert window._path.name == "notes.md"
-    assert window._source.toPlainText() == "unchanged"
+    assert window.document.path.name == "notes.md"
+    assert window.editor.source.toPlainText() == "unchanged"
 
 
 def test_save_as_is_disabled_in_view_mode(window):
@@ -192,7 +199,7 @@ def test_save_keyboard_shortcut(qtbot, window, md_file):
     from PySide6.QtTest import QTest
 
     edit_action(window).trigger()
-    window._source.setPlainText(window._source.toPlainText() + "\nshortcut line\n")
+    window.editor.source.setPlainText(window.editor.source.toPlainText() + "\nshortcut line\n")
     window.activateWindow()
     qtbot.wait(1)
     QTest.keyClick(window, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
@@ -204,7 +211,7 @@ def test_save_stays_disabled_without_a_file(qtbot):
     window = ViewerWindow(None)
     qtbot.addWidget(window)
     window.show()
-    window._edit_action.trigger()
+    window.actions.edit_mode.trigger()
     assert not menu_action(window, "File", "Save").isEnabled()
 
 
@@ -214,7 +221,7 @@ def test_save_stays_disabled_without_a_file(qtbot):
 def _edit_buffer(window, text):
     """Append text to the source buffer as one undoable change."""
     edit_action(window).trigger()
-    cursor = window._source.textCursor()
+    cursor = window.editor.source.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText(text)
 
@@ -278,8 +285,8 @@ def test_opening_another_file_asks_about_unsaved_changes(
     )
 
     assert not window.open(md_file.parent / "other.md")
-    assert window._path == md_file
-    assert "unsaved" in window._source.toPlainText()
+    assert window.document.path == md_file
+    assert "unsaved" in window.editor.source.toPlainText()
 
 
 def test_title_marks_unsaved_changes(qtbot, window, monkeypatch):
@@ -310,15 +317,15 @@ def test_about_menu_item_shows_dialog(window, monkeypatch):
 
 def test_bundled_material_icons_render(qapp):
     for name in ("text_decrease", "text_increase", "exit_to_app", "edit"):
-        assert (HeinoReader.ICONS_DIR / f"{name}.svg").is_file()
-        icon = HeinoReader._material_icon(name)
+        assert (ICONS_DIR / f"{name}.svg").is_file()
+        icon = _material_icon(name)
         assert not icon.isNull()
         assert not icon.pixmap(32, 32).isNull()
 
 
 def test_missing_material_icon_falls_back_gracefully(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(HeinoReader.icons, "ICONS_DIR", tmp_path)
-    assert HeinoReader._material_icon("does_not_exist").isNull()
+    assert _material_icon("does_not_exist").isNull()
 
 
 # ---------------------------------------------------------------- toolbar
@@ -376,19 +383,19 @@ def test_edit_mode_splits_and_restores_view(qtbot, window):
     action = edit_action(window)
     action.trigger()
     assert action.isChecked()
-    assert window._splitter.count() == 2
-    assert window._source.isVisible()
-    assert window._source.x() < window.viewer.x(), "source must be left of preview"
-    assert window._source.toPlainText() == window._markdown
-    assert abs(window._source.width() - window.viewer.width()) <= 8, (
+    assert window.splitter.count() == 2
+    assert window.editor.source.isVisible()
+    assert window.editor.source.x() < window.viewer.x(), "source must be left of preview"
+    assert window.editor.source.toPlainText() == window.document.markdown
+    assert abs(window.editor.source.width() - window.viewer.width()) <= 8, (
         "halves should be roughly equal"
     )
 
     action.trigger()
     assert not action.isChecked()
     qtbot.wait(1)
-    assert not window._source.isVisible()
-    assert window.viewer.width() >= window._splitter.width() - 4, (
+    assert not window.editor.source.isVisible()
+    assert window.viewer.width() >= window.splitter.width() - 4, (
         "preview should fill the window again"
     )
 
@@ -399,7 +406,7 @@ def test_edit_mode_widens_the_window(qtbot, window):
     before = window.width()
     edit_action(window).trigger()
     assert window.width() > before, "edit mode should widen the window"
-    assert window.width() <= HeinoReader.EDIT_MODE_WIDTH
+    assert window.width() <= EDIT_MODE_WIDTH
     assert window.height() == 480, "only the width changes"
 
 
@@ -409,14 +416,14 @@ def test_edit_mode_never_exceeds_the_screen(qtbot, window):
     QApplication.processEvents()
     edit_action(window).trigger()
     available = window.screen().availableGeometry()
-    assert window.width() <= min(HeinoReader.EDIT_MODE_WIDTH, available.width())
+    assert window.width() <= min(EDIT_MODE_WIDTH, available.width())
 
 
 def test_edit_mode_never_shrinks_an_already_wide_window(qtbot, window):
-    window.resize(HeinoReader.EDIT_MODE_WIDTH + 200, 480)
+    window.resize(EDIT_MODE_WIDTH + 200, 480)
     QApplication.processEvents()
     edit_action(window).trigger()
-    assert window.width() == HeinoReader.EDIT_MODE_WIDTH + 200
+    assert window.width() == EDIT_MODE_WIDTH + 200
 
 
 def test_leaving_edit_mode_restores_the_previous_size(qtbot, window):
@@ -438,36 +445,36 @@ def test_edit_mode_stays_on_screen_when_widening(qtbot, window):
 
 
 def test_default_view_is_preview_only(window):
-    assert window._splitter.count() == 1, "no editor pane before edit mode"
-    assert window.viewer.width() >= window._splitter.width() - 4
+    assert window.splitter.count() == 1, "no editor pane before edit mode"
+    assert window.viewer.width() >= window.splitter.width() - 4
 
 
 def test_editor_is_created_lazily_on_edit_mode(window):
-    assert window._source is None
-    assert window._line_numbers is None
+    assert window.editor.source is None
+    assert window.editor.gutter is None
     edit_action(window).trigger()
-    assert isinstance(window._source, HeinoReader.MarkdownSourceEdit)
-    assert window._splitter.count() == 2
-    assert not window._line_numbers.installed
+    assert isinstance(window.editor.source, MarkdownSourceEdit)
+    assert window.splitter.count() == 2
+    assert not window.editor.gutter.installed
 
 
 def test_edit_mode_updates_preview_live(qtbot, window):
     edit_action(window).trigger()
-    qtbot.keyClicks(window._source, "# Fresh Heading")
-    assert window._markdown == window._source.toPlainText()
+    qtbot.keyClicks(window.editor.source, "# Fresh Heading")
+    assert window.document.markdown == window.editor.source.toPlainText()
 
 
 def test_edit_mode_renders_after_the_typing_pause(qtbot, window):
     """The preview is debounced, not dropped: it catches up when typing stops."""
     edit_action(window).trigger()
-    qtbot.keyClicks(window._source, "# Fresh Heading")
+    qtbot.keyClicks(window.editor.source, "# Fresh Heading")
     qtbot.waitUntil(lambda: "Fresh Heading" in preview_text(window), timeout=3000)
 
 
 def test_leaving_edit_mode_renders_pending_edits_at_once(qtbot, window):
     edit_action(window).trigger()
-    qtbot.keyClicks(window._source, "# Fresh Heading")
-    assert window._render_timer.isActive()
+    qtbot.keyClicks(window.editor.source, "# Fresh Heading")
+    assert window.editor.timer.isActive()
     edit_action(window).trigger()  # back to the full-width preview
     assert "Fresh Heading" in preview_text(window)
 
@@ -487,68 +494,68 @@ def test_undo_and_redo_lead_the_format_toolbar(window):
 
 
 def test_undo_and_redo_are_disabled_outside_edit_mode(window):
-    assert not window._undo_action.isEnabled()
-    assert not window._redo_action.isEnabled()
+    assert not window.actions.undo.isEnabled()
+    assert not window.actions.redo.isEnabled()
 
 
 def test_undo_and_redo_follow_the_editor_history(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     original = source.toPlainText()
-    assert not window._undo_action.isEnabled()
+    assert not window.actions.undo.isEnabled()
 
     cursor = source.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText(" appended")
-    assert window._undo_action.isEnabled()
+    assert window.actions.undo.isEnabled()
 
-    window._undo_action.trigger()
+    window.actions.undo.trigger()
     assert source.toPlainText() == original
-    assert window._redo_action.isEnabled()
+    assert window.actions.redo.isEnabled()
 
-    window._redo_action.trigger()
+    window.actions.redo.trigger()
     assert source.toPlainText() == original + " appended"
 
 
 def test_a_new_change_after_undo_clears_redo(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     cursor = source.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText("one")
-    window._undo_action.trigger()
+    window.actions.undo.trigger()
     cursor = source.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText("two")
-    assert not window._redo_action.isEnabled()
+    assert not window.actions.redo.isEnabled()
 
 
 def test_formatting_is_one_undo_step(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("Title")
     _select(source, 0, 5)
     qtbot.keyClick(source, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
     assert source.toPlainText() == "# Title"
 
-    window._undo_action.trigger()
+    window.actions.undo.trigger()
     assert source.toPlainText() == "Title"
 
 
 def test_opening_another_file_clears_the_history(qtbot, window, tmp_path):
     """The same text in another file must not undo into the previous one."""
     edit_action(window).trigger()
-    cursor = window._source.textCursor()
+    cursor = window.editor.source.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)
     cursor.insertText("more")
-    assert window._undo_action.isEnabled()
+    assert window.actions.undo.isEnabled()
 
     other = tmp_path / "other.md"
-    other.write_text(window._source.toPlainText(), encoding="utf-8")
+    other.write_text(window.editor.source.toPlainText(), encoding="utf-8")
     window.open(other)
 
-    assert not window._undo_action.isEnabled()
-    assert not window._redo_action.isEnabled()
+    assert not window.actions.undo.isEnabled()
+    assert not window.actions.redo.isEnabled()
 
 
 def test_zoom_indicator_updates(window):
@@ -567,16 +574,16 @@ def test_zoom_indicator_updates(window):
 def test_editor_text_matches_the_preview_size(qtbot, window):
     """Both panes read at the same size; only the family differs."""
     edit_action(window).trigger()
-    assert window._source.font().pointSizeF() == pytest.approx(
-        HeinoReader.preview_body_point_size()
+    assert window.editor.source.font().pointSizeF() == pytest.approx(
+        preview_body_point_size()
     )
 
 
 def test_zoom_scales_the_editor_text_too(qtbot, window):
     edit_action(window).trigger()
     window.zoom_in()
-    assert window._source.font().pointSizeF() == pytest.approx(
-        HeinoReader.preview_body_point_size() * 1.1
+    assert window.editor.source.font().pointSizeF() == pytest.approx(
+        preview_body_point_size() * 1.1
     )
 
 
@@ -586,13 +593,13 @@ def test_editor_keeps_its_monospace_family(qtbot, window):
     fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
     edit_action(window).trigger()
     window.zoom_in()
-    assert window._source.font().family() == fixed.family()
+    assert window.editor.source.font().family() == fixed.family()
 
 
 def test_editor_tab_stop_follows_the_font(qtbot, window):
     """The tab stop is a pixel distance, so it has to be recomputed."""
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     window.zoom_in()
     expected = source.fontMetrics().horizontalAdvance(source.INDENT)
     assert source.tabStopDistance() == expected
@@ -621,33 +628,33 @@ def test_placeholder_is_rendered_without_a_file(qtbot):
     qtbot.addWidget(window)
     window.show()
     QApplication.processEvents()
-    assert window._markdown == HeinoReader.PLACEHOLDER_MD
+    assert window.document.markdown == PLACEHOLDER_MD
     assert "Drop a markdown file here" in preview_text(window)
 
 
 def test_viewer_uses_the_qt_renderer_by_default(window):
-    assert isinstance(window.viewer, HeinoReader.QtMarkdownView)
-    assert window._renderer == HeinoReader.RENDERER_QT
-    assert not window._web_preview_action.isChecked()
+    assert isinstance(window.viewer, QtMarkdownView)
+    assert window.preview.kind == RENDERER_QT
+    assert not window.actions.web_preview.isChecked()
 
 
 # ------------------------------------------------------------------- zoom
 
 def test_zoom_sets_the_view_zoom(window):
-    assert window._scale == pytest.approx(1.0)
+    assert window.scale == pytest.approx(1.0)
     window.zoom_in()
-    assert window._scale == pytest.approx(1.1)
+    assert window.scale == pytest.approx(1.1)
     window.zoom_reset()
-    assert window._scale == pytest.approx(1.0)
+    assert window.scale == pytest.approx(1.0)
 
 
 def test_zoom_is_clamped(window):
     for _ in range(100):
         window.zoom_in()
-    assert window._scale == 4.0
+    assert window.scale == 4.0
     for _ in range(200):
         window.zoom_out()
-    assert window._scale == 0.5
+    assert window.scale == 0.5
 
 
 # ------------------------------------------------------------------ files
@@ -656,10 +663,10 @@ def test_live_reload(qtbot, tmp_path):
     path = tmp_path / "live.md"
     path.write_text("# First version\n", encoding="utf-8")
     window = make_window(qtbot, path)
-    assert "First version" in window._markdown
+    assert "First version" in window.document.markdown
     path.write_text("# Second version\n", encoding="utf-8")
     qtbot.waitUntil(
-        lambda: "Second version" in window._markdown, timeout=5000
+        lambda: "Second version" in window.document.markdown, timeout=5000
     )
 
 
@@ -677,7 +684,7 @@ def test_relative_image_uses_the_document_directory(qtbot, tmp_path):
 
     # The web engine resolves relative URLs against the document folder.
     assert window.viewer.base_dir == tmp_path
-    html = HeinoReader.markdown_to_html(window._markdown)
+    html = markdown_to_html(window.document.markdown)
     assert 'src="pic.png"' in html
 
 
@@ -687,7 +694,7 @@ def test_code_block_is_not_rewritten(qtbot, tmp_path):
         "# Doc\n\n```text\n![example](pic.png)\n```\n", encoding="utf-8"
     )
     window = make_window(qtbot, path)
-    html = HeinoReader.markdown_to_html(window._markdown)
+    html = markdown_to_html(window.document.markdown)
     assert "![example](pic.png)" in html
     assert str(tmp_path / "pic.png") not in html
 
@@ -695,8 +702,8 @@ def test_code_block_is_not_rewritten(qtbot, tmp_path):
 # ------------------------------------------------------------------ links
 
 def test_relative_links_stay_relative_for_the_base_directory(window):
-    assert window.viewer.base_dir == Path(window._path).parent
-    html = HeinoReader.markdown_to_html(window._markdown)
+    assert window.viewer.base_dir == Path(window.document.path).parent
+    html = markdown_to_html(window.document.markdown)
     assert 'href="other.md"' in html
     assert 'href="https://example.org"' in html
 
@@ -752,38 +759,38 @@ def layout_formats(widget, needle):
 
 def test_source_is_a_markdown_code_editor(window):
     edit_action(window).trigger()
-    assert isinstance(window._source, HeinoReader.MarkdownSourceEdit)
-    assert isinstance(window._source, QPlainTextEdit)
+    assert isinstance(window.editor.source, MarkdownSourceEdit)
+    assert isinstance(window.editor.source, QPlainTextEdit)
 
 
 def test_source_has_a_highlighter(window):
     edit_action(window).trigger()
     QApplication.processEvents()
-    assert isinstance(window._source.highlighter, HeinoReader.MarkdownHighlighter)
+    assert isinstance(window.editor.source.highlighter, MarkdownHighlighter)
 
 
 def test_line_numbers_are_off_by_default(window):
     edit_action(window).trigger()
     QApplication.processEvents()
-    assert not window._line_numbers.installed
-    assert not window._line_numbers.area.isVisible()
+    assert not window.editor.gutter.installed
+    assert not window.editor.gutter.area.isVisible()
 
 
 def test_line_numbers_can_be_switched_on_and_off(window):
     edit_action(window).trigger()
     QApplication.processEvents()
-    assert not window._line_numbers.installed
+    assert not window.editor.gutter.installed
 
-    window._line_numbers_action.setChecked(True)
+    window.actions.line_numbers.setChecked(True)
     QApplication.processEvents()
-    assert window._line_numbers.installed
-    assert window._line_numbers.area.isVisible()
+    assert window.editor.gutter.installed
+    assert window.editor.gutter.area.isVisible()
 
-    window._line_numbers_action.setChecked(False)
+    window.actions.line_numbers.setChecked(False)
     QApplication.processEvents()
-    assert not window._line_numbers.installed
-    assert not window._line_numbers.area.isVisible()
-    assert window._source.viewportMargins().left() == 0
+    assert not window.editor.gutter.installed
+    assert not window.editor.gutter.area.isVisible()
+    assert window.editor.source.viewportMargins().left() == 0
 
 
 def test_remote_images_are_enabled_by_default(window):
@@ -815,28 +822,28 @@ def test_code_wrap_can_be_switched_off(window):
     action.setChecked(False)
     QApplication.processEvents()
     assert not window.viewer._wrap_code
-    assert not window._settings.get_bool(WRAP_CODE_KEY, True)
+    assert not window.settings.get_bool(WRAP_CODE_KEY, True)
 
     action.setChecked(True)
     QApplication.processEvents()
     assert window.viewer._wrap_code
-    assert window._settings.get_bool(WRAP_CODE_KEY, False)
+    assert window.settings.get_bool(WRAP_CODE_KEY, False)
 
 
 def test_highlighter_styles_headings_bold_and_code(window):
     edit_action(window).trigger()
-    window._source.setPlainText("# Title\n\nsome `inline code` here\n")
+    window.editor.source.setPlainText("# Title\n\nsome `inline code` here\n")
     QApplication.processEvents()
-    heading = layout_formats(window._source, "Title")
+    heading = layout_formats(window.editor.source, "Title")
     assert heading.fontWeight() >= QFont.Weight.Bold
-    code = layout_formats(window._source, "inline code")
-    base = window._source.palette().base().color()
+    code = layout_formats(window.editor.source, "inline code")
+    base = window.editor.source.palette().base().color()
     assert code.background().color() != base
 
 
 def test_tab_indents_selected_lines(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("first line\nsecond line\nthird line")
     cursor = source.textCursor()
     cursor.setPosition(0)
@@ -849,7 +856,7 @@ def test_tab_indents_selected_lines(qtbot, window):
 
 def test_shift_tab_unindents_selected_lines(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("    first line\n    second line\nthird line")
     cursor = source.textCursor()
     cursor.setPosition(0)
@@ -862,11 +869,11 @@ def test_shift_tab_unindents_selected_lines(qtbot, window):
 
 def test_tab_without_selection_moves_the_cursor(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("ab")
     source.moveCursor(source.textCursor().MoveOperation.Start)
     qtbot.keyClick(source, Qt.Key.Key_Tab)
-    assert source.textCursor().position() == HeinoReader.MarkdownSourceEdit.INDENT.__len__()
+    assert source.textCursor().position() == MarkdownSourceEdit.INDENT.__len__()
 
 
 # ----------------------------------------------------------------- format
@@ -881,7 +888,7 @@ def _select(editor, start, end):
 
 def format_actions(window):
     """All markdown formatting actions of the window."""
-    return window._format_actions
+    return window.actions.editing_actions
 
 
 def test_format_actions_are_disabled_in_view_mode(window):
@@ -932,7 +939,7 @@ def test_text_formatting_actions_have_the_expected_shortcuts(window):
 
 def test_ctrl_b_wraps_the_selection_in_bold_markers(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("hello world")
     _select(source, 0, 5)
     qtbot.keyClick(source, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
@@ -941,7 +948,7 @@ def test_ctrl_b_wraps_the_selection_in_bold_markers(qtbot, window):
 
 def test_ctrl_b_twice_unwraps_again(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("**hello** world")
     _select(source, 2, 7)
     qtbot.keyClick(source, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
@@ -950,7 +957,7 @@ def test_ctrl_b_twice_unwraps_again(qtbot, window):
 
 def test_ctrl_1_sets_a_heading_and_toggles_off(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("title")
     _select(source, 0, 5)
     qtbot.keyClick(source, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
@@ -961,7 +968,7 @@ def test_ctrl_1_sets_a_heading_and_toggles_off(qtbot, window):
 
 def test_ctrl_u_underlines_with_the_u_tag(qtbot, window):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("click me")
     _select(source, 0, 8)
     qtbot.keyClick(source, Qt.Key.Key_U, Qt.KeyboardModifier.ControlModifier)
@@ -972,7 +979,7 @@ def test_ctrl_u_underlines_with_the_u_tag(qtbot, window):
 
 def insert_action(window, name):
     """Return a format action by its visible name."""
-    return next(a for a in window._format_actions if a.text() == name)
+    return next(a for a in window.actions.editing_actions if a.text() == name)
 
 
 def test_insert_actions_have_the_expected_shortcuts(window):
@@ -993,7 +1000,7 @@ def test_insert_actions_live_in_the_format_toolbar(window):
 
 def test_insert_link_uses_the_dialog_result(window, monkeypatch):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("see the docs")
     _select(source, 4, 7)  # "the"
     monkeypatch.setattr(HeinoReader.window, "ask_link_url", lambda parent, initial: "https://x.io")
@@ -1003,7 +1010,7 @@ def test_insert_link_uses_the_dialog_result(window, monkeypatch):
 
 def test_insert_link_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("keep me")
     monkeypatch.setattr(HeinoReader.window, "ask_link_url", lambda parent, initial: "")
     insert_action(window, "Link...").trigger()
@@ -1013,7 +1020,7 @@ def test_insert_link_is_skipped_when_cancelled(window, monkeypatch):
 def test_insert_image_stores_a_relative_path(window, tmp_path, monkeypatch):
     edit_action(window).trigger()
     window.open(tmp_path / "doc.md")
-    source = window._source
+    source = window.editor.source
     source.setPlainText("")
     image = tmp_path / "img" / "pic.png"
     monkeypatch.setattr(
@@ -1029,7 +1036,7 @@ def test_insert_image_keeps_an_absolute_path_outside_the_document(
 ):
     edit_action(window).trigger()
     window.open(tmp_path / "doc.md")
-    source = window._source
+    source = window.editor.source
     source.setPlainText("")
     elsewhere = tmp_path.parent / "other" / "pic.png"
     monkeypatch.setattr(
@@ -1042,7 +1049,7 @@ def test_insert_image_keeps_an_absolute_path_outside_the_document(
 
 def test_insert_table_fills_the_dialog_size(window, monkeypatch):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("")
     monkeypatch.setattr(HeinoReader.window, "ask_table_size", lambda parent: (2, 3))
     insert_action(window, "Table...").trigger()
@@ -1055,7 +1062,7 @@ def test_insert_table_fills_the_dialog_size(window, monkeypatch):
 
 def test_insert_table_is_skipped_when_cancelled(window, monkeypatch):
     edit_action(window).trigger()
-    source = window._source
+    source = window.editor.source
     source.setPlainText("untouched")
     monkeypatch.setattr(HeinoReader.window, "ask_table_size", lambda parent: None)
     insert_action(window, "Table...").trigger()
@@ -1065,7 +1072,7 @@ def test_insert_table_is_skipped_when_cancelled(window, monkeypatch):
 # ----------------------------------------------------------- desktop entry
 
 def test_desktop_file_uses_a_relative_exec_command():
-    desktop = (HeinoReader.APP_DIR.parent.parent / "heino-reader.desktop").read_text(
+    desktop = (APP_DIR.parent.parent / "heino-reader.desktop").read_text(
         encoding="utf-8"
     )
     exec_lines = [l for l in desktop.splitlines() if l.startswith("Exec=")]

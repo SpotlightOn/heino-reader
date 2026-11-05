@@ -5,14 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QByteArray
+from PySide6.QtCore import QByteArray, QObject, Signal
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtNetwork import QNetworkReply
 from PySide6.QtWidgets import QApplication
 
-import HeinoReader
-from HeinoReader import ViewerWindow
-from HeinoReader.images import RemoteImageLoader, svg_to_image
+from HeinoReader.images import RemoteImageLoader, placeholder_image, svg_to_image
+from HeinoReader.layout import (
+    DOCUMENT_MARGIN,
+    MAX_CONTENT_WIDTH,
+    VERTICAL_MARGIN_MAX,
+    VERTICAL_MARGIN_MIN,
+    content_layout,
+    vertical_margins,
+)
+from HeinoReader.preview import RENDERER_QT, RENDERER_WEB
+from HeinoReader.render import PREVIEW_CSS, markdown_to_html, render_html_document
+from HeinoReader.window import ViewerWindow
 
 
 def make_image(path, width, height):
@@ -47,12 +56,12 @@ def make_window(qtbot, doc, renderer):
 
 @pytest.fixture
 def qt_window(qtbot, image_doc):
-    return make_window(qtbot, image_doc, HeinoReader.RENDERER_QT)
+    return make_window(qtbot, image_doc, RENDERER_QT)
 
 
 @pytest.fixture
 def web_window(qtbot, image_doc):
-    return make_window(qtbot, image_doc, HeinoReader.RENDERER_WEB)
+    return make_window(qtbot, image_doc, RENDERER_WEB)
 
 
 # ------------------------------------------------------- QTextEdit backend
@@ -74,7 +83,7 @@ def image_formats(window):
 
 
 def available_width(window):
-    content, _ = HeinoReader.content_layout(window.viewer.viewport().width())
+    content, _ = content_layout(window.viewer.viewport().width())
     return content
 
 
@@ -107,11 +116,11 @@ def test_qt_images_refit_when_the_window_shrinks(qtbot, qt_window):
 # ------------------------------------------------------- WebEngine backend
 
 def test_theme_limits_image_width():
-    assert "max-width: 100%" in HeinoReader.PREVIEW_CSS
+    assert "max-width: 100%" in PREVIEW_CSS
 
 
 def test_web_document_keeps_the_relative_image_source(web_window):
-    html = HeinoReader.markdown_to_html(web_window._markdown)
+    html = markdown_to_html(web_window.document.markdown)
     assert 'src="big.png"' in html
 
 
@@ -120,7 +129,7 @@ def test_web_preview_resolves_relative_images_via_the_base_dir(web_window, tmp_p
 
 
 def test_web_document_contains_the_theme(web_window):
-    document = HeinoReader.render_html_document(web_window._markdown)
+    document = render_html_document(web_window.document.markdown)
     assert "<style>" in document
     assert "max-width: 100%" in document
     assert "<img" in document
@@ -129,26 +138,79 @@ def test_web_document_contains_the_theme(web_window):
 # ------------------------------------------------------------ column width
 
 def test_content_layout_caps_and_centres_wide_windows():
-    content, margin = HeinoReader.content_layout(1400)
-    assert content == HeinoReader.MAX_CONTENT_WIDTH
-    assert margin > HeinoReader.DOCUMENT_MARGIN
+    content, margin = content_layout(1400)
+    assert content == MAX_CONTENT_WIDTH
+    assert margin > DOCUMENT_MARGIN
 
 
 def test_content_layout_uses_full_width_on_narrow_windows():
-    content, margin = HeinoReader.content_layout(600)
-    assert content == 600 - 2 * HeinoReader.DOCUMENT_MARGIN
-    assert margin == HeinoReader.DOCUMENT_MARGIN
+    content, margin = content_layout(600)
+    assert content == 600 - 2 * DOCUMENT_MARGIN
+    assert margin == DOCUMENT_MARGIN
 
 
 def test_content_layout_handles_zero_width():
-    assert HeinoReader.content_layout(0) == (0, int(HeinoReader.DOCUMENT_MARGIN))
+    assert content_layout(0) == (0, int(DOCUMENT_MARGIN))
+
+
+def test_vertical_margins_grow_with_the_window_height():
+    small, _ = vertical_margins(400)
+    large, _ = vertical_margins(1400)
+    assert small == VERTICAL_MARGIN_MIN
+    assert large > small
+
+
+def test_vertical_margins_stop_at_their_maximum():
+    assert vertical_margins(10000) == (VERTICAL_MARGIN_MAX, VERTICAL_MARGIN_MAX)
+
+
+def test_vertical_margins_are_larger_than_the_side_margin():
+    top, bottom = vertical_margins(600)
+    assert top > DOCUMENT_MARGIN
+    assert bottom == top
+
+
+def test_vertical_margins_handle_zero_height():
+    assert vertical_margins(0) == (VERTICAL_MARGIN_MIN, VERTICAL_MARGIN_MIN)
+
+
+def test_web_theme_scales_its_vertical_padding_with_the_viewport():
+    assert "max(32px, 6vh)" in PREVIEW_CSS
 
 
 def test_qt_preview_sets_the_side_margin_from_the_layout(qt_window):
-    _, margin = HeinoReader.content_layout(qt_window.viewer.viewport().width())
+    _, margin = content_layout(qt_window.viewer.viewport().width())
     frame_format = qt_window.viewer.document().rootFrame().frameFormat()
     assert round(frame_format.leftMargin()) == margin
     assert round(frame_format.rightMargin()) == margin
+
+
+def test_qt_preview_leaves_more_room_above_and_below_than_at_the_sides(
+    qt_window,
+):
+    """The first and last line must not touch the window edge."""
+    view = qt_window.viewer
+    top, bottom = vertical_margins(view.viewport().height())
+    frame_format = view.document().rootFrame().frameFormat()
+    assert round(frame_format.topMargin()) == top
+    assert round(frame_format.bottomMargin()) == bottom
+    assert top > DOCUMENT_MARGIN
+
+
+def test_qt_vertical_margin_follows_the_window_height(qtbot, image_doc):
+    """A taller window gets more air above and below the text."""
+    window = ViewerWindow(image_doc, renderer=RENDERER_QT)
+    qtbot.addWidget(window)
+    window.resize(700, 400)
+    window.show()
+    QApplication.processEvents()
+    small = window.viewer.document().rootFrame().frameFormat().topMargin()
+
+    window.resize(700, 1200)
+    QApplication.processEvents()
+    large = window.viewer.document().rootFrame().frameFormat().topMargin()
+
+    assert large > small
 
 
 # ------------------------------------------------------------ remote images
@@ -201,3 +263,71 @@ def test_remote_svg_is_decoded_and_cached(qapp):
     cached = loader.cached(url)
     assert cached is not None and not cached.isNull()
     assert (cached.width(), cached.height()) == (120, 20)
+
+
+def test_svg_without_any_size_yields_no_image(qapp):
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+    assert svg_to_image(svg).isNull()
+
+
+# ------------------------------------------------------------- placeholders
+
+def test_placeholder_image_is_a_visible_box(qapp):
+    image = placeholder_image("https://example.org/big.png")
+    assert not image.isNull()
+    assert (image.width(), image.height()) == (420, 96)
+
+
+def test_placeholder_image_without_a_source(qapp):
+    assert not placeholder_image("").isNull()
+
+
+class FakeReply(QObject):
+    """Stand-in for QNetworkReply: only the signal and lifetime are needed."""
+
+    finished = Signal()
+
+    def error(self):
+        return QNetworkReply.NetworkError.NoError
+
+    def readAll(self):
+        return QByteArray(b"not an image")
+
+    def deleteLater(self):
+        pass
+
+
+class FakeManager:
+    def __init__(self) -> None:
+        self.urls = []
+
+    def get(self, request):
+        self.urls.append(request.url().toString())
+        return FakeReply()
+
+
+def test_fetch_requests_each_url_once(qapp):
+    loader = RemoteImageLoader()
+    manager = FakeManager()
+    loader._manager = manager
+    url = "https://example.org/badge.svg"
+
+    loader.fetch(url)
+    loader.fetch(url)
+
+    assert manager.urls == [url]
+    assert loader.is_pending(url) is True
+    assert loader.cached(url) is None
+
+
+def test_undecodable_download_emits_failure(qapp):
+    loader = RemoteImageLoader()
+    url = "https://example.org/broken.png"
+    loader._pending.add(url)
+    failures = []
+    loader.failed.connect(failures.append)
+
+    loader._finished(FakeReply(), url)
+
+    assert failures == [url]
+    assert loader.cached(url) is None

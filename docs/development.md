@@ -33,9 +33,16 @@ uv run python scripts/check_pyside6_crash.py
 
 ```
 src/HeinoReader/      the package
-  __init__.py           entry point (main) and public re-exports
+  __init__.py           docstring and module map
   __main__.py           enables python -m HeinoReader
-  window.py             the viewer window: menus, toolbars, edit mode
+  cli.py                command line entry point, starts QApplication
+  window.py             the main window: wiring, files, edit mode, zoom
+  document.py           the open file: text, path, modified state (no widgets)
+  editpane.py           source editor, gutter and typing delay
+  preview.py            the preview backends and the one on screen
+  chrome.py             menu bar and toolbars
+  actions.py            every action: icon, shortcut, tooltip, handler
+  texts.py              about text, start screen, toolbar style
   render.py             markdown to HTML, path helpers
   qtview.py             QTextEdit preview backend (default)
   webview.py            QtWebEngine preview backend (opt-in, lazy import)
@@ -60,10 +67,12 @@ scripts/              install scripts and the PySide6 crash check
 main.py               entry point for PyInstaller builds
 ```
 
-The `editor/` subpackage is self-contained: it imports only Qt and its own
-sibling modules, never the top-level package, so there are no circular imports.
-`__init__.py` re-exports the editor pieces; the editor widget itself is only
-built when edit mode is opened.
+`window.py` is a composition root: it wires `document.py`, `editpane.py`,
+`preview.py` and `chrome.py` together and owns the file lifecycle. Actions are
+defined once in `actions.py`; `chrome.py` only decides where they appear. The
+`editor/` subpackage is self-contained: it imports only Qt and its own sibling
+modules, never the top-level package, so there are no circular imports. Tests
+import a name from the module that owns it, not from the package root.
 
 ## Naming
 

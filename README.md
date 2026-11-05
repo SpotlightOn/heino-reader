@@ -34,6 +34,8 @@ notes open with a double click.
 heino-reader notes.md
 ```
 
+![Heino Reader](docs/screenshot.avif)
+
 ## Install
 
 ```sh

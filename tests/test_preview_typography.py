@@ -12,8 +12,14 @@ import pytest
 from PySide6.QtGui import QFontInfo, QFontMetricsF
 from PySide6.QtWidgets import QApplication
 
-import HeinoReader
 from HeinoReader.qtview import QtMarkdownView, preview_font
+from HeinoReader.render import (
+    PREVIEW_CSS,
+    preview_body_point_size,
+    preview_font_families,
+    preview_line_height,
+    qt_stylesheet,
+)
 
 
 @pytest.fixture
@@ -31,19 +37,19 @@ def view(qtbot):
 
 def test_body_size_is_converted_from_the_stylesheet():
     """16 px in the stylesheet is 12 pt for Qt."""
-    assert HeinoReader.preview_body_point_size() == pytest.approx(12.0)
+    assert preview_body_point_size() == pytest.approx(12.0)
 
 
 def test_families_come_from_the_stylesheet():
     """A generic family, so every platform resolves it without extra fonts."""
-    assert HeinoReader.preview_font_families() == ["sans-serif"]
+    assert preview_font_families() == ["sans-serif"]
     resolved = QFontInfo(preview_font()).family()
     assert resolved, "sans-serif must resolve to a real font"
 
 
 def test_stylesheet_keeps_its_css_pixels_for_the_web_backend():
     """The Qt conversion must not be pushed into the shared file."""
-    assert "font-size: 16px" in HeinoReader.PREVIEW_CSS
+    assert "font-size: 16px" in PREVIEW_CSS
 
 
 @pytest.mark.parametrize(
@@ -58,7 +64,7 @@ def test_stylesheet_keeps_its_css_pixels_for_the_web_backend():
     ],
 )
 def test_body_size_parsing(css, expected):
-    assert HeinoReader.preview_body_point_size(css) == pytest.approx(expected)
+    assert preview_body_point_size(css) == pytest.approx(expected)
 
 
 # ------------------------------------------------------------ the Qt document
@@ -129,8 +135,8 @@ def _block_formats(view) -> dict:
 
 
 def test_stylesheet_declares_the_css_line_heights():
-    assert HeinoReader.preview_line_height() == pytest.approx(1.55)
-    assert HeinoReader.preview_line_height(heading=True) == pytest.approx(1.25)
+    assert preview_line_height() == pytest.approx(1.55)
+    assert preview_line_height(heading=True) == pytest.approx(1.25)
 
 
 @pytest.mark.parametrize(
@@ -144,8 +150,8 @@ def test_stylesheet_declares_the_css_line_heights():
     ],
 )
 def test_line_height_parsing(css, expected_body, expected_heading):
-    assert HeinoReader.preview_line_height(css=css) == expected_body
-    assert HeinoReader.preview_line_height(heading=True, css=css) == expected_heading
+    assert preview_line_height(css=css) == expected_body
+    assert preview_line_height(heading=True, css=css) == expected_heading
 
 
 def test_body_blocks_use_the_css_line_height(view):
@@ -175,7 +181,7 @@ def test_heading_line_height_differs_from_the_body_one(view):
 
 def test_qt_stylesheet_converts_line_heights_to_qt_percentages():
     """CSS multiples become the percentage of natural height Qt reads."""
-    sheet = HeinoReader.qt_stylesheet(
+    sheet = qt_stylesheet(
         "body { line-height: 1.5; } h1 { line-height: 120%; }",
         pixel_per_natural=0.5,
     )
@@ -185,7 +191,7 @@ def test_qt_stylesheet_converts_line_heights_to_qt_percentages():
 
 def test_qt_stylesheet_leaves_fixed_lengths_alone():
     """A px value does not scale with the font, so Qt may keep it as it is."""
-    sheet = HeinoReader.qt_stylesheet(
+    sheet = qt_stylesheet(
         "body { line-height: 24px; } pre { line-height: 12pt; }",
         pixel_per_natural=0.5,
     )
@@ -195,14 +201,14 @@ def test_qt_stylesheet_leaves_fixed_lengths_alone():
 
 def test_qt_stylesheet_spells_out_the_body_line_height_on_blocks():
     """Paragraphs would miss it otherwise: a body rule never matches a fragment."""
-    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=1.0)
+    sheet = qt_stylesheet(pixel_per_natural=1.0)
     assert "p, li, dd, dt, td, th, blockquote { line-height: 155.00% }" in sheet
 
 
 def test_qt_stylesheet_leaves_no_unitless_line_height():
     """Qt would misread `1.55` as a share of the natural height."""
     factor = 0.735
-    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=factor)
+    sheet = qt_stylesheet(pixel_per_natural=factor)
     assert "line-height: 1.55" not in sheet
     assert f"line-height: {1.55 * factor * 100:.2f}%" in sheet
 
@@ -212,11 +218,11 @@ def test_qt_stylesheet_leaves_no_unitless_line_height():
 
 def test_qt_stylesheet_wraps_code_only_when_asked():
     """A wide code line must not widen the document, so Qt gets pre-wrap."""
-    assert "white-space: pre-wrap" in HeinoReader.qt_stylesheet(pixel_per_natural=1.0)
+    assert "white-space: pre-wrap" in qt_stylesheet(pixel_per_natural=1.0)
     # The shared file keeps ``pre`` scrollable for the browser.
-    assert "white-space: pre-wrap" not in HeinoReader.PREVIEW_CSS
+    assert "white-space: pre-wrap" not in PREVIEW_CSS
 
-    sheet = HeinoReader.qt_stylesheet(pixel_per_natural=1.0, wrap_code=False)
+    sheet = qt_stylesheet(pixel_per_natural=1.0, wrap_code=False)
     assert "white-space: pre-wrap" not in sheet
     assert "line-height: 155.00%" in sheet
 

@@ -41,7 +41,7 @@ Issues = "https://github.com/SpotlightOn/heino-reader/issues"
 Changelog = "https://github.com/SpotlightOn/heino-reader/releases"
 
 [project.scripts]
-heino-reader = "HeinoReader:main"
+heino-reader = "HeinoReader.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

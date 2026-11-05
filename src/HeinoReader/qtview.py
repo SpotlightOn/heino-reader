@@ -25,7 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QTextEdit, QWidget
 
 from .images import RemoteImageLoader, is_remote, placeholder_image
-from .layout import content_layout
+from .layout import content_layout, vertical_margins
 from .render import (
     _resolve_relative_paths,
     markdown_to_html,
@@ -148,18 +148,27 @@ class QtMarkdownView(QTextEdit):
         self._fit_images()
 
     def _apply_content_width(self) -> int:
-        """Centre the text column at MAX_CONTENT_WIDTH on wide windows."""
+        """Centre the text column and keep room above and below it.
+
+        Runs on every resize, so the top and bottom margin follow the window
+        height instead of being fixed to the side margin.
+        """
         content, margin = content_layout(self.viewport().width())
         if content <= 0:
             return 0
+        top, bottom = vertical_margins(self.viewport().height())
         frame = self.document().rootFrame()
         fmt = frame.frameFormat()
         if (
             round(fmt.leftMargin()) != margin
             or round(fmt.rightMargin()) != margin
+            or round(fmt.topMargin()) != top
+            or round(fmt.bottomMargin()) != bottom
         ):
             fmt.setLeftMargin(margin)
             fmt.setRightMargin(margin)
+            fmt.setTopMargin(top)
+            fmt.setBottomMargin(bottom)
             frame.setFrameFormat(fmt)
         return content
 
