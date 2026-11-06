@@ -67,6 +67,7 @@ without touching your system Python. None of this needs root rights.
 | [Installation](docs/installation.md) | PyPI, local XDG install, web extra, uninstall, file association |
 | [Usage](docs/usage.md) | Menus, edit mode, insert dialogs, all keyboard shortcuts |
 | [Renderers](docs/renderers.md) | Qt text engine vs. Web Engine, feature by feature |
+| [Workarounds](docs/workarounds.md) | Every place the code bends around Qt's rich text limits, and why |
 | [Development](docs/development.md) | Setup, tests, project layout, naming conventions |
 
 ## License

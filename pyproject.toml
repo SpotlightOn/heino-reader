@@ -58,6 +58,12 @@ heino-reader = "HeinoReader.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# pytest-qt installs a Python Qt message handler before every test and removes
+# it afterwards. A QtWebEngine warning raised on a Chromium thread while that
+# swap happens makes PySide6 call a NULL handler and kills the process with
+# SIGSEGV. No test reads pytest-qt's captured Qt messages, so the capture is
+# off; Qt's own handler still prints the warnings.
+addopts = ["--no-qt-log"]
 
 [tool.coverage.run]
 source = ["HeinoReader"]
