@@ -10,6 +10,8 @@
 
 ### Changed
 
+- Viewer: the vertical scrollbar is always visible, so the column keeps its
+  width when the bar appears.
 - PySide6 6.12 on Python 3.12 and newer; 3.10/3.11 stay on 6.11.3 until 6.12.1
   is released (PYSIDE-3474).
 

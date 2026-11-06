@@ -63,6 +63,12 @@ class QtMarkdownView(QTextEdit):
         self.setReadOnly(True)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
+        # The column width is derived from the viewport width. A vertical
+        # scrollbar that appears later would narrow the viewport without a
+        # resize event, leaving the document laid out for the wider viewport —
+        # which Qt answers with a horizontal scrollbar. Keeping the bar always
+        # shown keeps the viewport width constant.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._base_dir: Path | None = None
         self._press_pos: QPoint | None = None
         self._last_open: tuple[str, float] | None = None

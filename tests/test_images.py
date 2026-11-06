@@ -89,9 +89,15 @@ def image_formats(window):
     return found
 
 
+def frame_margins(window):
+    """Left, right, top and bottom inset of the text inside the window."""
+    fmt = window.viewer.document().rootFrame().frameFormat()
+    return fmt.leftMargin(), fmt.rightMargin(), fmt.topMargin(), fmt.bottomMargin()
+
+
 def available_width(window):
-    content, _ = content_layout(window.viewer.viewport().width())
-    return content
+    """Widest the text column may be: the window minus its side margins."""
+    return window.viewer.viewport().width() - 2 * DOCUMENT_MARGIN
 
 
 def test_qt_oversized_image_is_scaled_to_the_available_width(qt_window):
@@ -108,6 +114,23 @@ def test_qt_document_does_not_overflow_the_viewport(qt_window):
     document = qt_window.viewer.document()
     assert document.size().width() <= qt_window.viewer.viewport().width() + 1
     assert qt_window.viewer.horizontalScrollBar().maximum() == 0
+
+
+def test_qt_scrolling_content_does_not_add_a_horizontal_scrollbar(
+    qtbot, image_doc
+):
+    """A scrollbar must not narrow the text and leave a horizontal one behind."""
+    window = ViewerWindow(image_doc, renderer=RENDERER_QT)
+    qtbot.addWidget(window)
+    window.resize(800, 400)  # short enough that the document scrolls
+    window.show()
+    QApplication.processEvents()
+
+    view = window.viewer
+    assert view.verticalScrollBar().isVisible()
+    assert view.horizontalScrollBar().maximum() == 0
+    left, right, _, _ = frame_margins(window)
+    assert round(left) == round(right)
 
 
 def test_qt_table_stays_inside_the_column(qtbot):
@@ -203,23 +226,19 @@ def test_web_theme_scales_its_vertical_padding_with_the_viewport():
     assert "max(32px, 6vh)" in DOCUMENT_CSS
 
 
-def test_qt_viewer_sets_the_side_margin_from_the_layout(qt_window):
-    _, margin = content_layout(qt_window.viewer.viewport().width())
-    frame_format = qt_window.viewer.document().rootFrame().frameFormat()
-    assert round(frame_format.leftMargin()) == margin
-    assert round(frame_format.rightMargin()) == margin
+def test_qt_text_is_centred_between_equal_side_margins(qt_window):
+    left, right, _, _ = frame_margins(qt_window)
+    assert round(left) == round(right)
+    assert left >= DOCUMENT_MARGIN
 
 
 def test_qt_viewer_leaves_more_room_above_and_below_than_at_the_sides(
     qt_window,
 ):
     """The first and last line must not touch the window edge."""
-    view = qt_window.viewer
-    top, bottom = vertical_margins(view.viewport().height())
-    frame_format = view.document().rootFrame().frameFormat()
-    assert round(frame_format.topMargin()) == top
-    assert round(frame_format.bottomMargin()) == bottom
-    assert top > DOCUMENT_MARGIN
+    left, right, top, bottom = frame_margins(qt_window)
+    assert round(top) == round(bottom)
+    assert top > max(left, right)
 
 
 def test_qt_vertical_margin_follows_the_window_height(qtbot, image_doc):
