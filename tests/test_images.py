@@ -110,6 +110,24 @@ def test_qt_document_does_not_overflow_the_viewport(qt_window):
     assert qt_window.viewer.horizontalScrollBar().maximum() == 0
 
 
+def test_qt_table_stays_inside_the_column(qtbot):
+    """A table that fills the column must not show a horizontal scrollbar."""
+    view = QtMarkdownView()
+    qtbot.addWidget(view)
+    view.resize(800, 700)
+    view.show()
+    QApplication.processEvents()
+    header = "| " + " | ".join(f"Column {i}" for i in range(8)) + " |"
+    rule = "|" + "---|" * 8
+    row = "| " + " | ".join("some longer cell content" for _ in range(8)) + " |"
+
+    view.set_markdown(f"{header}\n{rule}\n{row}\n")
+    QApplication.processEvents()
+
+    assert view.document().size().width() <= view.viewport().width() + 1
+    assert view.horizontalScrollBar().maximum() == 0
+
+
 def test_qt_images_refit_when_the_window_shrinks(qtbot, qt_window):
     before, _ = image_formats(qt_window)["big.png"]
     qt_window.resize(420, 700)

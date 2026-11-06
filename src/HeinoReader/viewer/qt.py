@@ -21,6 +21,8 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
     QTextImageFormat,
+    QTextLength,
+    QTextTable,
 )
 from PySide6.QtWidgets import QTextEdit, QWidget
 
@@ -29,6 +31,7 @@ from ..utils import open_external
 from .images import RemoteImageLoader, is_remote, placeholder_image
 from .render import (
     _resolve_relative_paths,
+    cell_border_width,
     markdown_to_html,
     qt_stylesheet,
     viewer_body_point_size,
@@ -105,6 +108,7 @@ class QtMarkdownView(QTextEdit):
         self.setHtml(html)
         self._apply_content_width()
         self._apply_remote_images()
+        self._fit_tables()
         self._fit_images()
 
     def _apply_stylesheet(self) -> None:
@@ -151,6 +155,7 @@ class QtMarkdownView(QTextEdit):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._apply_content_width()
+        self._fit_tables()
         self._fit_images()
 
     def _apply_content_width(self) -> int:
@@ -245,7 +250,44 @@ class QtMarkdownView(QTextEdit):
 
     def _refit(self) -> None:
         self._fit_width = -1
+        self._fit_tables()
         self._fit_images()
+
+    def _column_tables(self):
+        """Tables that take their width from their content.
+
+        Code blocks and quotes are tables too, but they are declared as a
+        percentage of the column and already fit.
+        """
+        for frame in self.document().rootFrame().childFrames():
+            if isinstance(frame, QTextTable):
+                width = frame.format().width()
+                if width.type() != QTextLength.Type.PercentageLength:
+                    yield frame
+
+    def _fit_tables(self) -> None:
+        """Give markdown tables the exact width of the text column.
+
+        Qt lays a table out at the width of its cell area and draws the outer
+        cell borders outside it, so a table that fills the column ends up a
+        few pixels wider than the viewport, which Qt answers with a horizontal
+        scrollbar under the text. Reserving the border width keeps it inside.
+        Tables that cannot shrink below their minimum stay wider.
+        """
+        content, _ = content_layout(self.viewport().width())
+        if content <= 0:
+            return
+        width = max(0.0, content - 2 * cell_border_width())
+        for table in self._column_tables():
+            fmt = table.format()
+            current = fmt.width()
+            if (
+                current.type() == QTextLength.Type.FixedLength
+                and round(current.rawValue()) == round(width)
+            ):
+                continue
+            fmt.setWidth(QTextLength(QTextLength.Type.FixedLength, width))
+            table.setFormat(fmt)
 
     def _fit_images(self) -> None:
         """Scale oversized images down to the text column width."""

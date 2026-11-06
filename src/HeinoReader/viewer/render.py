@@ -155,6 +155,24 @@ def viewer_body_point_size(css: str | None = None) -> float:
     return value / _CSS_PX_PER_PT
 
 
+# A cell border declared in the theme, e.g. ``th, td { border: 1px solid … }``.
+_CELL_BORDER_RE = re.compile(r"(?<![\w-])border\s*:\s*([\d.]+)px", re.IGNORECASE)
+
+
+def cell_border_width(css: str | None = None) -> float:
+    """Left and right border of a table cell, in pixels.
+
+    Qt lays a table out at the width of its cell area and draws the outer cell
+    borders outside that width, so the column has to reserve them. Zero when
+    the theme declares no border width.
+    """
+    block = _declarations(
+        DOCUMENT_CSS if css is None else css, frozenset({"th", "td"})
+    )
+    match = _CELL_BORDER_RE.search(block)
+    return float(match.group(1)) if match else 0.0
+
+
 def viewer_line_height(*, heading: bool = False, css: str | None = None) -> float | None:
     """CSS ``line-height`` of headings or body text, as a factor.
 
