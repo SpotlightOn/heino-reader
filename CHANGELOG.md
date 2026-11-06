@@ -19,6 +19,8 @@
 
 - Viewer: tables that fill the column no longer stick out by their cell borders
   and add a horizontal scrollbar.
+- Web Engine renderer: closing the window no longer warns about a released
+  profile or crashes on shutdown.
 - Viewer: the zoom applies to both renderers, so switching back no longer
   restores an older value.
 - Editor: line numbers come back on startup when they were enabled.

@@ -68,11 +68,18 @@ class WebMarkdownView(QWebEngineView):
         self._base_dir: Path | None = None
         self._wrap_code = True
         self._profile = QWebEngineProfile(self)
-        self._image_filter = RemoteImageFilter(self)
+        self._image_filter = RemoteImageFilter(self._profile)
         self._profile.setUrlRequestInterceptor(self._image_filter)
         self._page = MarkdownPage(self._profile, self)
         self._page.setBackgroundColor(QColor("#ffffff"))
         self.setPage(self._page)
+        # Qt destroys a profile only after its pages are gone. Both were
+        # children of the view, so the profile could go first, which Qt
+        # answers with "Release of profile requested but WebEnginePage still
+        # not deleted" and a crash at shutdown. Handing the profile to the
+        # page fixes the order: the view deletes the page, the page deletes
+        # the profile.
+        self._profile.setParent(self._page)
 
         settings = self._page.settings()
         settings.setAttribute(
