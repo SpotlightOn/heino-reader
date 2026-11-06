@@ -47,9 +47,9 @@ the *font size*. `line-height: 1.55` therefore becomes a corrected percentage
 (~114 %), computed from Qt's own font metrics — the same `QFontMetricsF` and
 `QFontInfo` calls any Qt app would use, no DPI arithmetic. `qt_stylesheet()`
 rewrites every declaration that way before the stylesheet reaches
-`setDefaultStyleSheet()`, and spells the body value out on the block elements,
-which would otherwise miss it (there is no `<body>` to inherit from). Code
-blocks and headings keep the value of their own rule.
+`setDefaultStyleSheet()`, and applies the body value to `*`, because a fragment
+has no `<body>` for it to inherit from. More specific rules (headings, `pre`)
+still win, as they would in a browser.
 
 The document is touched exactly once, by `setHtml()`: the line heights arrive
 with the stylesheet, so nothing reformats the blocks afterwards and no second

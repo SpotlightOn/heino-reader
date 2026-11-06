@@ -199,10 +199,10 @@ def test_qt_stylesheet_leaves_fixed_lengths_alone():
     assert "line-height: 12pt" in sheet
 
 
-def test_qt_stylesheet_spells_out_the_body_line_height_on_blocks():
-    """Paragraphs would miss it otherwise: a body rule never matches a fragment."""
+def test_qt_stylesheet_applies_the_body_line_height_to_every_element():
+    """A body rule never matches a fragment, so ``*`` carries the value."""
     sheet = qt_stylesheet(pixel_per_natural=1.0)
-    assert "p, li, dd, dt, td, th, blockquote { line-height: 155.00% }" in sheet
+    assert "* { line-height: 155.00% }" in sheet
 
 
 def test_qt_stylesheet_leaves_no_unitless_line_height():

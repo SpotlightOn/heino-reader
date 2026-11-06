@@ -211,7 +211,9 @@ _LINE_HEIGHT_DECL_RE = re.compile(
 
 # Block elements whose line height has to come from an explicit rule: Qt's
 # setHtml() parses a fragment without <body>, so the body rule never matches.
-_BODY_BLOCK_SELECTORS = "p, li, dd, dt, td, th, blockquote"
+# ``*`` reaches every element; Qt still keeps a more specific rule (headings,
+# ``pre``) because the tag selector wins over the universal one.
+_EVERY_ELEMENT = "*"
 
 # Qt can scroll a document but not a single block, so one code line wider than
 # the text column widens the whole document and puts a scrollbar under the
@@ -249,7 +251,8 @@ def qt_stylesheet(
     with the font size and are left alone.
 
     Because a ``body`` rule never matches in a fragment, the body line height
-    is additionally spelled out on the block elements. ``pixel_per_natural``
+    is additionally applied to every element with ``*``; Qt keeps the more
+    specific rules for headings and code. ``pixel_per_natural``
     comes from the document font: ``QFontInfo.pixelSize() /
     QFontMetricsF.height()``.
 
@@ -271,7 +274,7 @@ def qt_stylesheet(
     body = viewer_line_height(css=sheet)
     if body is not None:
         percent = _qt_percent(body, "", pixel_per_natural)
-        parts.append(f"{_BODY_BLOCK_SELECTORS} {{ line-height: {percent:.2f}% }}")
+        parts.append(f"{_EVERY_ELEMENT} {{ line-height: {percent:.2f}% }}")
     return "\n".join(parts)
 
 
