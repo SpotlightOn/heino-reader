@@ -1,6 +1,6 @@
 [project]
 name = "heino-reader"
-version = "0.2.2"
+version = "0.3.0"
 description = "A fast document viewer for markdown files, built with PySide6"
 readme = "README.md"
 license = "MIT"
@@ -23,16 +23,29 @@ classifiers = [
 ]
 # Only the Qt base modules are required: QtCore, QtGui, QtWidgets, QtSvg and
 # QtNetwork all ship with pyside6-essentials. QtWebEngine lives in
-# pyside6-addons (~440 MB installed) and is therefore an optional extra.
+# pyside6-addons and is therefore an optional extra.
+#
+# 6.12.0 aborts on Python <= 3.11: it over-decrements the refcount of immortal
+# objects such as None and True, which those interpreters still free
+# (PYSIDE-3474, fixed in 6.12.1). Python 3.12+ keeps 6.12; older interpreters
+# stay on 6.11 until 6.12.1 is out.
 dependencies = [
     "markdown-it-py>=4.2.0",
     "pygments>=2.21.0",
-    "PySide6-Essentials>=6.6,<6.12",
+    "PySide6-Essentials>=6.6,<6.12; python_version < '3.12'",
+    "PySide6-Essentials>=6.12,<6.13; python_version >= '3.12'",
 ]
 
 [project.optional-dependencies]
-# pip install "heino-reader[web]" enables View -> Web Engine Preview.
-web = ["PySide6-Addons>=6.6,<6.12"]
+# pip install "heino-reader[web]" enables View -> Web Engine Renderer.
+# 6.12 moved QtWebEngine out of pyside6-addons into its own wheel. Only the
+# Linux wheel of pyside6-addons declares the "webengine" extra, so the wheel is
+# named directly; it needs pyside6-addons==6.12.0 on every platform.
+web = [
+    "PySide6-Addons>=6.6,<6.12; python_version < '3.12'",
+    "PySide6-Addons>=6.12,<6.13; python_version >= '3.12'",
+    "PySide6-WebEngine>=6.12,<6.13; python_version >= '3.12'",
+]
 
 [project.urls]
 Homepage = "https://github.com/SpotlightOn/heino-reader"
@@ -41,10 +54,16 @@ Issues = "https://github.com/SpotlightOn/heino-reader/issues"
 Changelog = "https://github.com/SpotlightOn/heino-reader/releases"
 
 [project.scripts]
-heino-reader = "HeinoReader:main"
+heino-reader = "HeinoReader.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# pytest-qt installs a Python Qt message handler before every test and removes
+# it afterwards. A QtWebEngine warning raised on a Chromium thread while that
+# swap happens makes PySide6 call a NULL handler and kills the process with
+# SIGSEGV. No test reads pytest-qt's captured Qt messages, so the capture is
+# off; Qt's own handler still prints the warnings.
+addopts = ["--no-qt-log"]
 
 [tool.coverage.run]
 source = ["HeinoReader"]
@@ -72,9 +91,11 @@ packages = ["src/HeinoReader"]
 
 [dependency-groups]
 # The test suite exercises the WebEngine backend, so the dev environment
-# keeps pyside6-addons even though the app itself installs without it.
+# keeps QtWebEngine even though the app itself installs without it.
 dev = [
-    "PySide6-Addons>=6.6,<6.12",
+    "PySide6-Addons>=6.6,<6.12; python_version < '3.12'",
+    "PySide6-Addons>=6.12,<6.13; python_version >= '3.12'",
+    "PySide6-WebEngine>=6.12,<6.13; python_version >= '3.12'",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "pytest-qt>=4.5.0",

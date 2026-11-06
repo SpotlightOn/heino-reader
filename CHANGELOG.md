@@ -2,10 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- Viewer: `View → Wrap Code` (default on) keeps long code lines inside the
+  text column.
+- Viewer: the zoom level is remembered across restarts.
+
+### Changed
+
+- Viewer: the vertical scrollbar is always visible, so the column keeps its
+  width when the bar appears.
+- PySide6 6.12 on Python 3.12 and newer; 3.10/3.11 stay on 6.11.3 until 6.12.1
+  is released (PYSIDE-3474).
+
 ### Fixed
 
-- Preview: `View → Wrap Code` (default on) keeps long code lines inside the
-  text column instead of widening the document; both renderers follow it.
+- Viewer: tables that fill the column no longer stick out by their cell borders
+  and add a horizontal scrollbar.
+- Web Engine renderer: closing the window no longer warns about a released
+  profile or crashes on shutdown.
+- Viewer: the zoom applies to both renderers, so switching back no longer
+  restores an older value.
+- Editor: line numbers come back on startup when they were enabled.
+- Editor: `**bold**` is bold instead of italic.
 
 ## [0.2.2] - 2026-10-27
 
@@ -17,12 +36,12 @@
 
 ### Changed
 
-- Preview: debounced rendering, CSS line heights, lazy highlighting.
-- Editor: text size follows the preview and the zoom.
+- Viewer: debounced rendering, CSS line heights, lazy highlighting.
+- Editor: text size follows the viewer and the zoom.
 
 ### Fixed
 
-- Qt preview on HiDPI: font size and line spacing now follow `preview.css`.
+- Qt viewer on HiDPI: font size and line spacing now follow `document.css`.
 - Editor: unsaved changes, close prompt, title marker.
 
 ## [0.2.1] - 2026-10-27
@@ -36,7 +55,7 @@
 
 ### Added
 
-- UI hint for the optional Web Engine preview.
+- UI hint for the optional Web Engine renderer.
 - MIT license.
 
 ### Fixed

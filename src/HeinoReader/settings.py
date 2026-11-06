@@ -13,6 +13,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QStandardPaths
 
 RENDERER_KEY = "view/renderer"
+SCALE_KEY = "view/scale"
 LINE_NUMBERS_KEY = "view/line_numbers"
 REMOTE_IMAGES_KEY = "view/remote_images"
 WRAP_CODE_KEY = "view/wrap_code"
@@ -49,6 +50,13 @@ class Settings:
     def get_bool(self, key: str, default: bool = False) -> bool:
         value = self._settings.value(key, "true" if default else "false")
         return str(value).lower() in ("1", "true", "yes", "on")
+
+    def get_float(self, key: str, default: float = 0.0) -> float:
+        """Return a stored number, or ``default`` when the file is broken."""
+        try:
+            return float(self._settings.value(key, default))
+        except (TypeError, ValueError):
+            return default
 
     def set_bool(self, key: str, value: bool) -> None:
         self._settings.setValue(key, "true" if value else "false")

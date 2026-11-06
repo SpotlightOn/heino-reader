@@ -8,9 +8,10 @@ still present::
 Exit code 0 means the version is fine; a fatal interpreter crash
 (``none_dealloc: deallocating None``) means it is still broken. The crash
 needs a QSyntaxHighlighter that sets character formats plus scrolling; no
-Heino Reader code is involved, so it is purely a PySide6/sh boken issue.
+Heino Reader code is involved, so it is purely a PySide6/shiboken issue.
 
-Pinned to ``<6.12`` because of this. See README, "Development".
+6.12.0 only crashes on Python 3.10/3.11, so check it with an interpreter of
+that series (PYSIDE-3474, fixed in 6.12.1). Background: docs/development.md.
 """
 
 from __future__ import annotations

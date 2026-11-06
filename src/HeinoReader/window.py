@@ -1,312 +1,164 @@
-"""The viewer window: menus, toolbars, preview backends and edit mode."""
+"""The main window: wiring for document, editor, viewer and chrome."""
 
 from __future__ import annotations
 
 import os
 import sys
-from importlib.util import find_spec
 from pathlib import Path
-from typing import Literal
 
-from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QFontDatabase, QKeySequence
+from PySide6.QtCore import QFileSystemWatcher, QRect, Qt, Slot
 from PySide6.QtWidgets import (
-    QApplication,
     QFileDialog,
-    QLabel,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QSizePolicy,
     QSplitter,
-    QStyle,
-    QToolBar,
-    QToolButton,
     QWidget,
 )
 
-from .editor import (
-    LineNumberGutter,
-    MarkdownSourceEdit,
-    ask_image,
-    ask_link_url,
-    ask_table_size,
-    formatting,
-)
+from .actions import Actions
+from .chrome import build_menu, build_toolbars
+from .document import Document
+from .editor import ask_image, ask_link_url, ask_table_size, formatting
+from .editpane import EditorPane
 from .files import is_supported_path, rejection_reason
-from .icons import APP_DIR, _icon
-from .layout import DOCUMENT_MARGIN
-from .qtview import QtMarkdownView
-from .render import preview_body_point_size
+from .icons import APP_DIR
 from .settings import (
     LINE_NUMBERS_KEY,
     REMOTE_IMAGES_KEY,
     RENDERER_KEY,
+    SCALE_KEY,
     WRAP_CODE_KEY,
     Settings,
+)
+from .texts import ABOUT_TEXT, PLACEHOLDER_MD, WEB_EXTRA_HINT
+from .viewer import (
+    DEFAULT_RENDERER,
+    RENDERER_QT,
+    RENDERER_WEB,
+    RENDERERS,
+    ViewerArea,
+    chosen_renderer,
 )
 
 ZOOM_STEP = 0.1
 MIN_SCALE = 0.5
 MAX_SCALE = 4.0
 
-# Shared chrome for the main and the format toolbar buttons.
-TOOLBAR_STYLE = """
-    QToolBar QToolButton {
-        border: 1px solid rgba(128, 128, 128, 0.45);
-        border-radius: 4px;
-        padding: 8px;
-        margin: 2px;
-        background-color: rgba(128, 128, 128, 0.10);
-    }
-    QToolBar QToolButton:hover {
-        background-color: rgba(128, 128, 128, 0.22);
-    }
-    QToolBar QToolButton:pressed,
-    QToolBar QToolButton:on {
-        background-color: rgba(128, 128, 128, 0.35);
-    }
-    """
-
 # Entering edit mode widens the window up to this many pixels, so the two
 # panes do not get cramped; on smaller screens it is clamped to the usable
 # screen width. Leaving edit mode restores the previous size.
 EDIT_MODE_WIDTH = 1200
 
-# Wait this long after the last keystroke before the preview re-renders.
-# One render per short note is cheap, but a long document costs real time and
-# typing does not need a fresh preview per character.
-LIVE_PREVIEW_DELAY_MS = 200
-
-# Keep in sync with pyproject.toml.
-VERSION = "0.2.2"
-
-ABOUT_TEXT = (
-    f"<b>Heino Reader {VERSION}</b>"
-    "<p>A fast document viewer for markdown files, built with PySide6.</p>"
-    "<p>An homage to Heino: dark sunglasses on, no fuss, just the text.</p>"
-    "<p>Optional: the Web Engine preview (View menu) renders with QtWebEngine "
-    "for full CSS fidelity. It is the better but slower renderer and needs "
-    'PySide6-Addons (<a href="https://pypi.org/project/PySide6-Addons/">'
-    "pypi.org/project/PySide6-Addons</a>).</p>"
-    "<p>Toolbar icons: Material Symbols Outlined (Apache License 2.0).</p>"
-    "<p>License: MIT. Copyright (c) 2026 SpotlightOn.</p>"
-)
-
-PLACEHOLDER_MD = """\
-<img src="icon.svg" alt="Heino Reader">
-
-# Heino Reader
-
-An homage to Heino, the German singer with the black sunglasses: dark glasses
-on, no fuss, just the text.
-
-Drop a markdown file here, or start Heino Reader with a file path:
-
-    heino-reader notes.md
-
-- **Open** with `Ctrl+O` or drag a file onto the window
-- **Edit** with the pencil button: source left, live preview right;
-  `Ctrl+S` saves, `Ctrl+Shift+S` saves as
-- **Zoom** with `Ctrl++` / `Ctrl+-`, reset with `Ctrl+0`
-- **Remote images**: View -> Load Remote Images (off sends no requests)
-- **Full CSS fidelity**: View -> Web Engine Preview. This is the better but
-  slower renderer: it draws with QtWebEngine instead of Qt's text engine and
-  needs the optional PySide6-Addons package
-  (https://pypi.org/project/PySide6-Addons/, `pip install "heino-reader[web]"`)
-"""
-
 
 def ask_open_file(parent: QWidget, start_dir: str) -> Path | None:
-    """Ask the user for a markdown file; None when cancelled."""
-    path, _ = QFileDialog.getOpenFileName(
+    name, _ = QFileDialog.getOpenFileName(
         parent,
         "Open Markdown File",
         start_dir,
-        "Markdown files (*.md *.markdown *.mdown *.mkd);;All files (*)",
+        "Markdown and text (*.md *.markdown *.mdown *.mkd *.mdx *.mdtext "
+        "*.mdtxt *.txt *.text);;All files (*)",
     )
-    return Path(path) if path else None
+    return Path(name) if name else None
 
 
 def ask_save_file(parent: QWidget, start_path: str) -> Path | None:
-    """Ask the user where to save the markdown file; None when cancelled."""
-    path, _ = QFileDialog.getSaveFileName(
+    name, _ = QFileDialog.getSaveFileName(
         parent,
         "Save Markdown File",
         start_path,
-        "Markdown files (*.md *.markdown *.mdown *.mkd);;All files (*)",
+        "Markdown (*.md);;All files (*)",
     )
-    if not path:
-        return None
-    target = Path(path)
-    return target if target.suffix else target.with_suffix(".md")
+    return Path(name) if name else None
 
 
 def show_about(parent: QWidget) -> None:
-    """Show the about dialog."""
     QMessageBox.about(parent, "About Heino Reader", ABOUT_TEXT)
 
 
-def ask_discard_changes(
-    parent: QWidget, name: str
-) -> Literal["save", "discard", "cancel"]:
-    """Ask what to do with unsaved edits before they would be lost.
-
-    Returns which button the user picked; "cancel" means keep everything as
-    it is. A separate function, so the window does not have to own a dialog
-    and tests can stand in for the answer.
-    """
+def ask_discard_changes(parent: QWidget, name: str) -> str:
+    """Ask what to do with unsaved changes: discard, save or cancel."""
     box = QMessageBox(parent)
-    box.setIcon(QMessageBox.Icon.Warning)
     box.setWindowTitle("Unsaved changes")
     box.setText(f"{name} has unsaved changes.")
-    box.setInformativeText("Save them before they are lost?")
-    save = box.addButton("&Save", QMessageBox.ButtonRole.AcceptRole)
-    discard = box.addButton("&Discard", QMessageBox.ButtonRole.DestructiveRole)
-    cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+    box.setInformativeText("Do you want to save them before continuing?")
+    box.setIcon(QMessageBox.Icon.Warning)
+    discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+    save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+    cancel = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(save)
-    box.setEscapeButton(cancel)
     box.exec()
     clicked = box.clickedButton()
-    if clicked is save:
-        return "save"
     if clicked is discard:
         return "discard"
+    if clicked is save:
+        return "save"
+    assert clicked is cancel
     return "cancel"
 
 
-# Preview backends. The Qt text renderer is the default: it starts
-# instantly and needs no Chromium process. The WebEngine backend is a
-# deliberate opt-in (View menu or --renderer web) and is imported lazily.
-RENDERER_WEB = "web"
-RENDERER_QT = "qt"
-DEFAULT_RENDERER = RENDERER_QT
-RENDERERS = (RENDERER_WEB, RENDERER_QT)
-
-WEB_EXTRA_HINT = (
-    "The Web Engine preview renders markdown with QtWebEngine (Chromium), so "
-    "tables, borders and backgrounds follow the CSS exactly. It is more "
-    "faithful than the default Qt text renderer, but slower to start and a "
-    "much bigger download.\n\n"
-    "It needs the optional PySide6-Addons package:\n"
-    "https://pypi.org/project/PySide6-Addons/\n\n"
-    '    pip install "heino-reader[web]"\n\n'
-    "(or run scripts/install.sh --web)"
-)
-
-
-def web_engine_available() -> bool:
-    """True when pyside6-addons (QtWebEngine) is installed.
-
-    Uses a spec lookup instead of an import, so checking never loads the
-    Chromium libraries.
-    """
-    return find_spec("PySide6.QtWebEngineWidgets") is not None
-
-
-def create_markdown_view(kind: str, parent: QWidget | None = None):
-    """Return a preview widget for the given renderer kind.
-
-    The WebEngine backend is imported here rather than at module level, so
-    a Qt-rendered preview never loads Chromium.
-    """
-    if kind == RENDERER_QT:
-        return QtMarkdownView(parent)
-    from .webview import WebMarkdownView
-
-    return WebMarkdownView(parent)
-
-
 class ViewerWindow(QMainWindow):
-    """Read-only markdown viewer with zoom controls in the top toolbar."""
+    """Read-only markdown viewer with zoom and an optional source pane."""
 
     def __init__(
         self, path: Path | None = None, renderer: str | None = None
     ) -> None:
         super().__init__()
-        self._settings = Settings()
-        chosen = renderer or self._settings.get_string(
-            RENDERER_KEY, DEFAULT_RENDERER
-        )
-        if chosen == RENDERER_WEB and not web_engine_available():
-            print(
-                "heino-reader: QtWebEngine is not installed, "
-                "falling back to the Qt renderer",
-                file=sys.stderr,
-            )
-            chosen = DEFAULT_RENDERER
-        self._renderer = chosen if chosen in RENDERERS else DEFAULT_RENDERER
-        self._markdown = PLACEHOLDER_MD
-        self._path: Path | None = None
-        # The text the file on disk has, to tell unsaved changes from a
-        # buffer that was merely reverted with undo.
-        self._saved_text = PLACEHOLDER_MD
+        self.settings = Settings()
+        self.document = Document(PLACEHOLDER_MD)
+        self.scale = 1.0
         # Geometry to restore when leaving edit mode (None = never widened).
         self._pre_edit_geometry: QRect | None = None
-        base_size = QApplication.font().pointSizeF()
-        self._base_point_size = base_size if base_size > 0 else 11.0
 
-        self._views: dict[str, QWidget] = {}
-        self.viewer = create_markdown_view(self._renderer, self)
-        # The start screen shows the bundled icon, so relative image
-        # paths resolve against the package directory until a file opens.
-        self.viewer.set_base_dir(APP_DIR)
-        self._views[self._renderer] = self.viewer
-        self.viewer.setAcceptDrops(False)
+        remembered = self.settings.get_string(RENDERER_KEY, DEFAULT_RENDERER)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.viewer_area = ViewerArea(
+            self.splitter, self, chosen_renderer(renderer, remembered), APP_DIR
+        )
+        self.setCentralWidget(self.splitter)
+        self.editor = EditorPane(
+            self.splitter, self._text_edited, self._update_edit_actions
+        )
+        self.editor.timer.timeout.connect(self.render)
 
-        # Edit mode: raw markdown source on the left, preview on the right.
-        # The source editor is created on first use (see _ensure_source),
-        # so a plain preview start never builds the editor, its syntax
-        # highlighter or its line-number gutter.
-        self._source: MarkdownSourceEdit | None = None
-        self._line_numbers: LineNumberGutter | None = None
-        self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self._splitter.addWidget(self.viewer)
-        self.setCentralWidget(self._splitter)
-
-        self._watcher = QFileSystemWatcher(self)
-        self._watcher.fileChanged.connect(self._on_file_changed)
-
-        # The live preview is debounced; see _source_edited.
-        self._render_timer = QTimer(self)
-        self._render_timer.setSingleShot(True)
-        self._render_timer.setInterval(LIVE_PREVIEW_DELAY_MS)
-        self._render_timer.timeout.connect(self._render)
+        self.watcher = QFileSystemWatcher(self)
+        self.watcher.fileChanged.connect(self._on_file_changed)
 
         self.setAcceptDrops(True)
         self.resize(800, 900)
 
-        self._build_format_actions()
-        self._build_menu()
-        self._build_toolbar()
-        self._set_scale(1.0)
+        self.actions = Actions(self)
+        build_menu(self)
+        build_toolbars(self)
+        self.set_scale(self.settings.get_float(SCALE_KEY, 1.0))
+        self._sync_view_options()
 
         if path is not None:
             self.open(path)
         else:
             self.setWindowTitle("Heino Reader[*]")
-            self._render()
+            self.render()
 
-    # ------------------------------------------------------------------ UI
+    @property
+    def viewer(self) -> QWidget:
+        """The viewer widget currently in the splitter."""
+        return self.viewer_area.view
 
-    # ------------------------------------------------------- format actions
+    # ------------------------------------------------------- formatting
 
-    def _apply_format(self, func, *args) -> None:
+    def apply_format(self, func, *args) -> None:
         """Run a formatting operation on the source cursor, keep selection."""
-        source = self._ensure_source()
+        source = self.editor.ensure()
         cursor = source.textCursor()
         func(cursor, *args)
         source.setTextCursor(cursor)
         source.setFocus()
 
-    # ------------------------------------------------- insert (via dialog)
-
     def _relative_path(self, target: str) -> str:
         """Prefer a path relative to the markdown file, for portability."""
-        if self._path is None:
+        if self.document.path is None:
             return target
         try:
-            return os.path.relpath(target, self._path.parent)
+            return os.path.relpath(target, self.document.path.parent)
         except ValueError:
             # e.g. different drives on Windows.
             return target
@@ -319,335 +171,108 @@ class ViewerWindow(QMainWindow):
         return "://" in text or text.startswith(("www.", "/", "./", "../"))
 
     @Slot()
-    def _insert_link(self) -> None:
-        selected = self._ensure_source().textCursor().selectedText()
+    def insert_link(self) -> None:
+        selected = self.editor.ensure().textCursor().selectedText()
         initial = selected if self._looks_like_url(selected) else ""
         url = ask_link_url(self, initial)
         if url:
-            self._apply_format(formatting.insert_link, url)
+            self.apply_format(formatting.insert_link, url)
 
     @Slot()
-    def _insert_image(self) -> None:
-        source = self._ensure_source()
-        start = str(self._path.parent) if self._path is not None else str(Path.home())
+    def insert_image(self) -> None:
+        source = self.editor.ensure()
+        start = (
+            str(self.document.path.parent)
+            if self.document.path is not None
+            else str(Path.home())
+        )
         alt = source.textCursor().selectedText()
         choice = ask_image(self, start, alt)
         if choice is None:
             return
         path, alt_text = choice
-        self._apply_format(formatting.insert_image, self._relative_path(path), alt_text)
+        self.apply_format(
+            formatting.insert_image, self._relative_path(path), alt_text
+        )
 
     @Slot()
-    def _insert_table(self) -> None:
+    def insert_table(self) -> None:
         size = ask_table_size(self)
         if size is None:
             return
         rows, columns = size
-        self._apply_format(formatting.insert_table, rows, columns)
+        self.apply_format(formatting.insert_table, rows, columns)
 
-    def _build_format_actions(self) -> None:
-        """Create the markdown formatting actions (menu + format toolbar)."""
-        self._format_actions: list[QAction] = []
-
-        # Undo and Redo start the format toolbar, but are not formatting
-        # actions: they follow the editor's history instead of edit mode.
-        self._undo_action = QAction(
-            _icon("undo", ["edit-undo"], glyph="\N{ANTICLOCKWISE OPEN CIRCLE ARROW}"),
-            "Undo",
-            self,
-        )
-        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
-        self._undo_action.setToolTip("Undo (Ctrl+Z)")
-        self._undo_action.setEnabled(False)
-        self._undo_action.triggered.connect(self._undo)
-
-        self._redo_action = QAction(
-            _icon("redo", ["edit-redo"], glyph="\N{CLOCKWISE OPEN CIRCLE ARROW}"),
-            "Redo",
-            self,
-        )
-        # Ctrl+Y on top of the platform shortcut, which is Ctrl+Shift+Z.
-        self._redo_action.setShortcuts(
-            [
-                QKeySequence(QKeySequence.StandardKey.Redo),
-                QKeySequence("Ctrl+Y"),
-            ]
-        )
-        self._redo_action.setToolTip("Redo (Ctrl+Shift+Z, Ctrl+Y)")
-        self._redo_action.setEnabled(False)
-        self._redo_action.triggered.connect(self._redo)
-
-        def add(text, icon_name, theme_names, shortcut, func, *args, glyph=""):
-            action = QAction(_icon(icon_name, theme_names, glyph=glyph), text, self)
-            action.setShortcut(QKeySequence(shortcut))
-            action.setToolTip(f"{text} ({shortcut})")
-            action.triggered.connect(
-                lambda checked=False, f=func, a=args: self._apply_format(f, *a)
-            )
-            action.setEnabled(False)  # only meaningful in edit mode
-            self._format_actions.append(action)
-            return action
-
-        self._bold_action = add(
-            "Bold", "format_bold", ["format-text-bold"],
-            "Ctrl+B", formatting.toggle_wrap, "**", glyph="B",
-        )
-        self._italic_action = add(
-            "Italic", "format_italic", ["format-text-italic"],
-            "Ctrl+I", formatting.toggle_wrap, "*", glyph="I",
-        )
-        self._underline_action = add(
-            "Underline", "format_underlined", ["format-text-underlined"],
-            "Ctrl+U", formatting.toggle_wrap, "<u>", "</u>", glyph="U",
-        )
-        self._strike_action = add(
-            "Strikethrough", "strikethrough_s", ["format-text-strikethrough"],
-            "Ctrl+Shift+X", formatting.toggle_wrap, "~~", glyph="S",
-        )
-        self._code_action = add(
-            "Inline Code", "code", ["insert-code"],
-            "Ctrl+E", formatting.toggle_wrap, "`", glyph="`",
-        )
-
-        # Headings 1-6 plus a "plain paragraph" reset.
-        self._heading_actions = [
-            add(
-                f"Heading {level}", "title", ["format-heading"],
-                f"Ctrl+{level}", formatting.set_heading, level, glyph=str(level),
-            )
-            for level in range(1, 7)
-        ]
-        self._paragraph_action = add(
-            "Plain Paragraph", "title", ["format-clear"],
-            "Ctrl+Shift+0", formatting.set_heading, 0, glyph="P",
-        )
-
-        self._quote_action = add(
-            "Block Quote", "format_quote", ["format-text-quote"],
-            "Ctrl+Shift+Q", formatting.toggle_quote, glyph=">",
-        )
-        self._bullet_action = add(
-            "Bullet List", "format_list_bulleted", ["format-list-bullet"],
-            "Ctrl+Shift+L", formatting.toggle_list, glyph="-",
-        )
-        self._numbered_action = add(
-            "Numbered List", "format_list_numbered", ["format-list-ordered"],
-            "Ctrl+Shift+N", formatting.toggle_list, True, glyph="1.",
-        )
-
-        # Insert actions open a dialog first, so they call their slot
-        # directly instead of going through _apply_format.
-        def add_slot(text, icon_name, theme_names, shortcut, slot, glyph=""):
-            action = QAction(_icon(icon_name, theme_names, glyph=glyph), text, self)
-            action.setShortcut(QKeySequence(shortcut))
-            action.setToolTip(f"{text} ({shortcut})")
-            action.triggered.connect(slot)
-            action.setEnabled(False)  # only meaningful in edit mode
-            self._format_actions.append(action)
-            return action
-
-        self._link_action = add_slot(
-            "Link...", "link", ["insert-link"],
-            "Ctrl+K", self._insert_link, glyph="L",
-        )
-        self._image_action = add_slot(
-            "Image...", "image", ["insert-image"],
-            "Ctrl+Shift+I", self._insert_image, glyph="P",
-        )
-        self._table_action = add_slot(
-            "Table...", "table", ["insert-table"],
-            "Ctrl+Shift+T", self._insert_table, glyph="T",
-        )
-
-    def _build_menu(self) -> None:
-        file_menu = self.menuBar().addMenu("&File")
-
-        open_action = QAction(
-            _icon("folder_open", ["document-open", "folder-open"], glyph="O"),
-            "&Open...",
-            self,
-        )
-        open_action.setShortcut(QKeySequence.StandardKey.Open)
-        open_action.triggered.connect(self._open_dialog)
-        file_menu.addAction(open_action)
-
-        self._save_action = QAction(
-            _icon("save", ["document-save", "document-save-as"], glyph="S"),
-            "&Save",
-            self,
-        )
-        self._save_action.setShortcut(QKeySequence.StandardKey.Save)
-        self._save_action.setEnabled(False)  # only meaningful in edit mode
-        self._save_action.triggered.connect(self._save)
-        file_menu.addAction(self._save_action)
-
-        self._save_as_action = QAction(
-            _icon("save", ["document-save-as"], glyph="S"),
-            "Save &As...",
-            self,
-        )
-        self._save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
-        self._save_as_action.setEnabled(False)  # only meaningful in edit mode
-        self._save_as_action.triggered.connect(self._save_as)
-        file_menu.addAction(self._save_as_action)
-
-        file_menu.addSeparator()
-
-        close_action = QAction(
-            _icon("close", ["window-close"], glyph="X"),
-            "&Close",
-            self,
-        )
-        close_action.setShortcut(QKeySequence.StandardKey.Close)
-        close_action.triggered.connect(self.close)
-        file_menu.addAction(close_action)
-
-        view_menu = self.menuBar().addMenu("&View")
-        self._line_numbers_action = QAction("&Line Numbers", self)
-        self._line_numbers_action.setCheckable(True)
-        self._line_numbers_action.setToolTip(
-            "Show line numbers in the source editor (optional)"
-        )
-        self._line_numbers_action.toggled.connect(self._set_line_numbers)
-        self._line_numbers_action.setChecked(
-            self._settings.get_bool(LINE_NUMBERS_KEY, False)
-        )
-        view_menu.addAction(self._line_numbers_action)
-
-        self._remote_images_action = QAction("Load &Remote Images", self)
-        self._remote_images_action.setCheckable(True)
-        self._remote_images_action.setToolTip(
-            "Download images from http(s) URLs; sends network requests"
-        )
-        self._remote_images_action.toggled.connect(self._set_remote_images)
-        view_menu.addAction(self._remote_images_action)
-
-        self._wrap_code_action = QAction("Wrap &Code", self)
-        self._wrap_code_action.setCheckable(True)
-        self._wrap_code_action.setToolTip(
-            "Wrap lines that are wider than the text column. Off leaves long "
-            "code lines intact and shows a horizontal scrollbar for the page"
-        )
-        self._wrap_code_action.toggled.connect(self._set_code_wrap)
-        view_menu.addAction(self._wrap_code_action)
-
-        self._remote_images_action.setChecked(
-            self._settings.get_bool(REMOTE_IMAGES_KEY, True)
-        )
-        self._wrap_code_action.setChecked(
-            self._settings.get_bool(WRAP_CODE_KEY, True)
-        )
-        # setChecked() emits nothing when a value already matches the default,
-        # so the saved state is applied explicitly.
-        self._sync_view_options()
-
-        view_menu.addSeparator()
-        self._web_preview_action = QAction("&Web Engine Preview", self)
-        self._web_preview_action.setCheckable(True)
-        self._web_preview_action.setChecked(self._renderer == RENDERER_WEB)
-        if web_engine_available():
-            self._web_preview_action.setToolTip(
-                "Render with QtWebEngine for full HTML/CSS fidelity. Better "
-                "but slower than the Qt text renderer (default), which never "
-                "loads Chromium"
-            )
-        else:
-            self._web_preview_action.setEnabled(False)
-            self._web_preview_action.setToolTip(
-                "Not installed. The Web Engine preview is the better but "
-                "slower renderer and needs PySide6-Addons "
-                '(https://pypi.org/project/PySide6-Addons/): pip install '
-                '"heino-reader[web]"'
-            )
-        self._web_preview_action.toggled.connect(self._set_web_preview)
-        view_menu.addAction(self._web_preview_action)
-
-        help_menu = self.menuBar().addMenu("&Help")
-        about_action = QAction(
-            _icon("info", ["help-about"], glyph="i"),
-            "&About",
-            self,
-        )
-        about_action.triggered.connect(self._about)
-        help_menu.addAction(about_action)
+    # -------------------------------------------------------------- files
 
     @Slot()
-    def _open_dialog(self) -> None:
-        start = str(self._path.parent) if self._path is not None else str(Path.home())
+    def open_dialog(self) -> None:
+        start = (
+            str(self.document.path.parent)
+            if self.document.path is not None
+            else str(Path.home())
+        )
         path = ask_open_file(self, start)
         if path is not None:
             self.open(path)
 
     @Slot()
-    def _save(self) -> bool:
+    def save(self) -> bool:
         """Write the edit buffer to the file; False when nothing was written.
 
         Without a file yet (the placeholder document), saving asks where to
-        put it — the same path the close prompt takes.
+        put it - the same path the close prompt takes.
         """
-        if self._source is None:
+        if self.editor.source is None:
             return False
-        if self._path is None:
-            return self._save_as()
-        return self._write(self._path)
+        if self.document.path is None:
+            return self.save_as()
+        return self._write_to(self.document.path)
 
     @Slot()
-    def _save_as(self) -> bool:
+    def save_as(self) -> bool:
         """Write the edit buffer to the chosen file and keep editing it."""
-        if self._source is None:
+        if self.editor.source is None:
             return False
-        if self._path is not None:
-            start = str(self._path)
-        else:
-            start = str(Path.home() / "untitled.md")
+        start = str(self.document.path or Path.home() / "untitled.md")
         path = ask_save_file(self, start)
         if path is None:
             return False
-        if path == self._path:
-            return self._write(path)
-        if not self._write(path):
+        if not self._write_to(path):
             return False
-        self._adopt_path(path)
-        self._render_now()
+        if path != self.document.path:
+            self.document.adopt(path)
+            self._attach_path()
+            self.render_now()
         return True
 
-    def _write(self, path: Path) -> bool:
-        """Write the edit buffer to ``path``; False when that fails."""
-        text = self._source.toPlainText()
-        try:
-            path.write_text(text, encoding="utf-8")
-        except OSError as error:
-            print(f"heino-reader: cannot save {path}: {error}", file=sys.stderr)
+    def _write_to(self, path: Path) -> bool:
+        """Write the buffer to ``path`` and clear the modified marker."""
+        self.document.markdown = self.editor.text
+        if not self.document.write(path):
             return False
-        self._saved_text = text
-        self._update_modified_state()
+        self._show_modified()
         return True
 
-    def _adopt_path(self, path: Path) -> None:
-        """Make ``path`` the file this window edits, watches and shows."""
-        self._path = path
-        self.viewer.set_base_dir(path.parent)
-        watched = self._watcher.files()
+    def _attach_path(self) -> None:
+        """Point the window at the document file: base dir, watcher, title."""
+        path = self.document.path
+        if path is None:
+            return
+        self.viewer_area.set_base_dir(path.parent)
+        watched = self.watcher.files()
         if watched:
-            self._watcher.removePaths(watched)
-        self._watcher.addPath(str(path))
-        self.setWindowTitle(f"{path.name} \N{EM DASH} Heino Reader[*]")
-        self._update_modified_state()
+            self.watcher.removePaths(watched)
+        self.watcher.addPath(str(path))
+        self.setWindowTitle(
+            f"{path.name} \N{EM DASH} Heino Reader[*]"
+        )
+        self._show_modified()
         self._update_edit_actions()
 
-    def _is_modified(self) -> bool:
-        """True while the buffer holds text the file on disk does not have.
-
-        Comparing the text instead of latching a flag means undoing back to
-        the saved state counts as clean again.
-        """
-        if self._source is None:
-            return False
-        return self._source.toPlainText() != self._saved_text
-
-    def _update_modified_state(self) -> None:
+    def _show_modified(self) -> None:
         """Show unsaved changes in the title, the way Qt windows do."""
-        self.setWindowModified(self._is_modified())
+        self.setWindowModified(self.document.is_modified)
 
     def _confirm_discard(self) -> bool:
         """True when the buffer may go, asking about unsaved changes first.
@@ -655,376 +280,158 @@ class ViewerWindow(QMainWindow):
         Guards everything that throws the buffer away: closing the window,
         opening another file, dropping a file onto the window.
         """
-        if not self._is_modified():
+        if not self.document.is_modified:
             return True
-        name = self._path.name if self._path is not None else "This document"
-        choice = ask_discard_changes(self, name)
+        choice = ask_discard_changes(self, self.document.name)
         if choice == "discard":
             return True
-        if choice == "save":
-            return self._save()
-        return False
+        return choice == "save" and self.save()
 
     def _update_edit_actions(self) -> None:
-        """Match saving, undo/redo and formatting to the current mode.
-
-        All of it needs the source editor, so all of it follows edit mode.
-        """
-        editing = self._edit_action.isChecked()
-        self._save_action.setEnabled(editing and self._path is not None)
-        self._save_as_action.setEnabled(editing)
-        document = self._source.document() if self._source is not None else None
-        self._undo_action.setEnabled(
-            editing and document is not None and document.isUndoAvailable()
+        """Match saving, undo/redo and formatting to the current mode."""
+        editing = self.actions.edit_mode.isChecked()
+        self.actions.save.setEnabled(
+            editing and self.document.path is not None
         )
-        self._redo_action.setEnabled(
-            editing and document is not None and document.isRedoAvailable()
-        )
-        # Formatting only makes sense while editing, so the format toolbar
-        # appears with edit mode and its actions become enabled.
-        self._format_toolbar.setVisible(editing)
-        for action in self._format_actions:
+        self.actions.save_as.setEnabled(editing)
+        self.actions.undo.setEnabled(editing and self.editor.can_undo)
+        self.actions.redo.setEnabled(editing and self.editor.can_redo)
+        # Formatting only makes sense while editing, so its toolbar appears
+        # with edit mode and its actions become enabled.
+        self.format_toolbar.setVisible(editing)
+        for action in self.actions.editing_actions:
             action.setEnabled(editing)
 
     @Slot()
-    def _undo(self) -> None:
+    def undo(self) -> None:
         """Undo the last change in the source editor."""
-        if self._source is not None:
-            self._source.undo()
+        self.editor.undo()
 
     @Slot()
-    def _redo(self) -> None:
+    def redo(self) -> None:
         """Redo the last undone change in the source editor."""
-        if self._source is not None:
-            self._source.redo()
+        self.editor.redo()
 
     @Slot()
-    def _about(self) -> None:
+    def show_about_dialog(self) -> None:
         show_about(self)
 
+    # ------------------------------------------------------- view options
+
     @Slot(bool)
-    def _set_line_numbers(self, enabled: bool) -> None:
+    def set_line_numbers(self, enabled: bool) -> None:
         """Switch the optional line-number gutter on or off.
 
-        The gutter only exists once the editor has been created; until
-        then the setting is just remembered and applied on first use.
+        The gutter only exists once the editor has been created; until then
+        the setting is just remembered and applied on first use.
         """
-        self._apply_line_numbers()
-        self._settings.set_bool(LINE_NUMBERS_KEY, enabled)
-
-    def _apply_line_numbers(self) -> None:
-        """Match the gutter (if the editor exists) to the menu state."""
-        if self._line_numbers is None:
-            return
-        if self._line_numbers_action.isChecked():
-            self._line_numbers.install()
-        else:
-            self._line_numbers.uninstall()
+        self.editor.apply_line_numbers(enabled)
+        self.settings.set_bool(LINE_NUMBERS_KEY, enabled)
 
     @Slot(bool)
-    def _set_remote_images(self, enabled: bool) -> None:
+    def set_remote_images(self, enabled: bool) -> None:
         """Allow or forbid downloading remote images, then re-render."""
-        self._settings.set_bool(REMOTE_IMAGES_KEY, enabled)
+        self.settings.set_bool(REMOTE_IMAGES_KEY, enabled)
         self._sync_view_options()
-        self._render_now()
+        self.render_now()
 
     @Slot(bool)
-    def _set_code_wrap(self, enabled: bool) -> None:
+    def set_code_wrap(self, enabled: bool) -> None:
         """Switch wide code lines between wrapping and a page scrollbar."""
-        self._settings.set_bool(WRAP_CODE_KEY, enabled)
+        self.settings.set_bool(WRAP_CODE_KEY, enabled)
         self._sync_view_options()
-        self._render_now()
+        self.render_now()
 
     def _sync_view_options(self) -> None:
-        """Apply the View-menu toggles to the current preview backend."""
-        self.viewer.set_remote_images_enabled(
-            self._remote_images_action.isChecked()
+        """Apply the View-menu toggles to the current backend."""
+        self.viewer_area.apply_options(
+            remote_images=self.actions.remote_images.isChecked(),
+            wrap_code=self.actions.wrap_code.isChecked(),
         )
-        self.viewer.set_code_wrap(self._wrap_code_action.isChecked())
 
     @Slot(bool)
-    def _set_web_preview(self, enabled: bool) -> None:
+    def set_web_renderer(self, enabled: bool) -> None:
         """Switch between the WebEngine and the Qt text renderer."""
         self._set_renderer(RENDERER_WEB if enabled else RENDERER_QT)
 
     def _set_renderer(self, kind: str) -> None:
-        """Swap the preview widget for the other backend."""
-        if kind not in RENDERERS or kind == self._renderer:
+        """Swap the viewer widget for the other backend."""
+        if kind not in RENDERERS or kind == self.viewer_area.kind:
             return
-        new = self._views.get(kind)
-        if new is None:
-            try:
-                new = create_markdown_view(kind, self)
-            except ImportError:
-                # pyside6-addons is missing: keep the current backend and
-                # explain instead of dying on a lazy import.
-                QMessageBox.information(
-                    self, "Web Engine Preview unavailable", WEB_EXTRA_HINT
-                )
-                self._web_preview_action.blockSignals(True)
-                self._web_preview_action.setChecked(False)
-                self._web_preview_action.blockSignals(False)
-                return
-            self._views[kind] = new
-        new.set_zoom(self._scale)
-        new.set_base_dir(
-            self._path.parent if self._path is not None else APP_DIR
-        )
-
-        old = self.viewer
-        visible = old.isVisible()
-        sizes = self._splitter.sizes()
-        index = self._splitter.indexOf(old)
-        self._splitter.replaceWidget(index, new)
-        if sizes:
-            self._splitter.setSizes(sizes)
-
-        self.viewer = new
-        self._renderer = kind
-        self._settings.set_string(RENDERER_KEY, kind)
+        if not self.viewer_area.switch(kind):
+            # QtWebEngine is missing: keep the current backend and
+            # explain instead of dying on a lazy import.
+            QMessageBox.information(
+                self, "Web Engine Renderer unavailable", WEB_EXTRA_HINT
+            )
+            self._check_web_renderer(False)
+            return
+        self.viewer_area.set_base_dir(self._base_dir())
         self._sync_view_options()
-        new.setVisible(visible)
-        self._web_preview_action.blockSignals(True)
-        self._web_preview_action.setChecked(kind == RENDERER_WEB)
-        self._web_preview_action.blockSignals(False)
-        self._render_now()
+        self.settings.set_string(RENDERER_KEY, kind)
+        self._check_web_renderer(kind == RENDERER_WEB)
+        self.render_now()
 
-    def _build_toolbar(self) -> None:
-        toolbar = QToolBar(self)
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
-        toolbar.setIconSize(QSize(18, 18))
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        # Give the buttons a visible button chrome (border, hover, pressed).
-        toolbar.setStyleSheet(TOOLBAR_STYLE)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+    def _check_web_renderer(self, checked: bool) -> None:
+        """Set the menu state without firing the toggle handler."""
+        self.actions.web_renderer.blockSignals(True)
+        self.actions.web_renderer.setChecked(checked)
+        self.actions.web_renderer.blockSignals(False)
 
-        zoom_out = QAction(
-            _icon(
-                "text_decrease",
-                ["zoom-out", "list-remove"],
-                QStyle.StandardPixmap.SP_TitleBarMinButton,
-                "\N{MINUS SIGN}",
-            ),
-            "Zoom out",
-            self,
-        )
-        zoom_out.setToolTip("Zoom out (Ctrl+-)")
-        zoom_out.setShortcut(QKeySequence.StandardKey.ZoomOut)
-        zoom_out.triggered.connect(self.zoom_out)
-
-        zoom_in = QAction(
-            _icon("text_increase", ["zoom-in", "list-add"], glyph="+"),
-            "Zoom in",
-            self,
-        )
-        zoom_in.setToolTip("Zoom in (Ctrl++)")
-        zoom_in.setShortcut(QKeySequence.StandardKey.ZoomIn)
-        zoom_in.triggered.connect(self.zoom_in)
-
-        reset = QAction(self)
-        reset.setShortcut(QKeySequence("Ctrl+0"))
-        reset.triggered.connect(self.zoom_reset)
-
-        edit_action = QAction(
-            _icon(
-                "edit",
-                ["document-edit", "edit"],
-                glyph="\N{LOWER LEFT PENCIL}",
-            ),
-            "Edit mode",
-            self,
-        )
-        edit_action.setCheckable(True)
-        edit_action.setToolTip(
-            "Toggle edit mode: source left, live preview right "
-            "(click again for the default view)"
-        )
-        edit_action.triggered.connect(self._set_edit_mode)
-        self._edit_action = edit_action
-
-        quit_action = QAction(
-            _icon(
-                "exit_to_app",
-                ["application-exit", "window-close"],
-                QStyle.StandardPixmap.SP_DialogCloseButton,
-                "\N{BALLOT X}",
-            ),
-            "Quit",
-            self,
-        )
-        quit_action.setToolTip("Quit (Ctrl+Q)")
-        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
-        quit_action.triggered.connect(self.close)
-
-        toolbar.addAction(zoom_out)
-        toolbar.addAction(zoom_in)
-        toolbar.addSeparator()
-        toolbar.addAction(edit_action)
-        toolbar.addAction(quit_action)
-        # A stretch spacer pushes the zoom level into the right corner.
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        toolbar.addWidget(spacer)
-        # Zoom level stays visible even in long documents.
-        self._zoom_label = QLabel("100%", self)
-        self._zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._zoom_label.setContentsMargins(8, 0, 6, 0)
-        toolbar.addWidget(self._zoom_label)
-
-        # The reset action has no button; register it for its shortcut.
-        self.addAction(reset)
-
-        self._build_format_toolbar()
-
-    def _build_format_toolbar(self) -> None:
-        """Second toolbar row with the formatting buttons.
-
-        It stays hidden until edit mode is switched on.
-        """
-        toolbar = QToolBar("Format", self)
-        toolbar.setMovable(False)
-        toolbar.setFloatable(False)
-        toolbar.setIconSize(QSize(18, 18))
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        toolbar.setStyleSheet(TOOLBAR_STYLE)
-        # Force its own row below the main toolbar; without the break Qt
-        # packs both toolbars side by side and the zoom label loses its
-        # place in the right corner.
-        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
-
-        toolbar.addAction(self._undo_action)
-        toolbar.addAction(self._redo_action)
-        toolbar.addSeparator()
-
-        for action in (
-            self._bold_action,
-            self._italic_action,
-            self._underline_action,
-            self._strike_action,
-            self._code_action,
-        ):
-            toolbar.addAction(action)
-
-        toolbar.addSeparator()
-
-        # Heading dropdown: H1-H6 plus a plain-paragraph reset.
-        heading_button = QToolButton(toolbar)
-        heading_button.setIcon(
-            _icon("title", ["format-heading"], glyph="\N{LATIN CAPITAL LETTER H}")
-        )
-        heading_button.setPopupMode(
-            QToolButton.ToolButtonPopupMode.InstantPopup
-        )
-        heading_button.setToolTip("Heading level")
-        heading_menu = QMenu(heading_button)
-        heading_menu.addActions(self._heading_actions)
-        heading_menu.addSeparator()
-        heading_menu.addAction(self._paragraph_action)
-        heading_button.setMenu(heading_menu)
-        toolbar.addWidget(heading_button)
-
-        toolbar.addSeparator()
-
-        for action in (
-            self._quote_action,
-            self._bullet_action,
-            self._numbered_action,
-        ):
-            toolbar.addAction(action)
-
-        toolbar.addSeparator()
-
-        for action in (
-            self._link_action,
-            self._image_action,
-            self._table_action,
-        ):
-            toolbar.addAction(action)
-
-        toolbar.hide()
-        self._format_toolbar = toolbar
+    def _base_dir(self) -> Path:
+        """Directory relative links and images resolve against."""
+        if self.document.path is not None:
+            return self.document.path.parent
+        return APP_DIR
 
     # --------------------------------------------------------------- zoom
 
     @Slot()
     def zoom_in(self) -> None:
-        self._set_scale(self._scale + ZOOM_STEP)
+        self.set_scale(self.scale + ZOOM_STEP)
 
     @Slot()
     def zoom_out(self) -> None:
-        self._set_scale(self._scale - ZOOM_STEP)
+        self.set_scale(self.scale - ZOOM_STEP)
 
     @Slot()
     def zoom_reset(self) -> None:
-        self._set_scale(1.0)
+        self.set_scale(1.0)
 
-    def _set_scale(self, scale: float) -> None:
-        self._scale = max(MIN_SCALE, min(MAX_SCALE, round(scale, 2)))
-        self.viewer.set_zoom(self._scale)
-        self._apply_editor_font()
-        self._zoom_label.setText(f"{round(self._scale * 100)}%")
-
-    def _apply_editor_font(self) -> None:
-        """Give the source pane the preview's text size, in its monospace font.
-
-        Both panes then read at the same size and follow Zoom together, which
-        keeps a split view from looking like two different applications while
-        scrolling.
-        """
-        if self._source is None:
-            return
-        self._source.set_text_point_size(
-            preview_body_point_size() * self._scale
-        )
+    def set_scale(self, scale: float) -> None:
+        self.scale = max(MIN_SCALE, min(MAX_SCALE, round(scale, 2)))
+        self.viewer_area.set_zoom(self.scale)
+        self.editor.set_zoom(self.scale)
+        self.zoom_label.setText(f"{round(self.scale * 100)}%")
+        # set_string() syncs the whole file, so skip it when the stored value
+        # already matches (every startup would otherwise rewrite it).
+        if self.settings.get_string(SCALE_KEY) != str(self.scale):
+            self.settings.set_string(SCALE_KEY, str(self.scale))
 
     # --------------------------------------------------------- edit mode
 
-    def _ensure_source(self) -> MarkdownSourceEdit:
-        """Create the source editor (and its gutter) on first use."""
-        if self._source is not None:
-            return self._source
-        source = MarkdownSourceEdit(self._splitter)
-        source.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        )
-        source.document().setDocumentMargin(DOCUMENT_MARGIN)
-        source.textChanged.connect(self._source_edited)
-        # Undo/redo actions follow the editor's history instead of guessing.
-        source.undoAvailable.connect(self._update_edit_actions)
-        source.redoAvailable.connect(self._update_edit_actions)
-        # Line numbers are optional; the gutter is created with the editor
-        # and attached only if the View menu asks for it.
-        self._line_numbers = LineNumberGutter(source)
-        self._splitter.insertWidget(0, source)
-        self._source = source
-        self._apply_line_numbers()
-        # Only now is the pane reachable for the shared text size.
-        self._apply_editor_font()
-        return source
-
     @Slot(bool)
-    def _set_edit_mode(self, enabled: bool) -> None:
-        """Split the window (source left, preview right) or show preview only."""
+    def set_edit_mode(self, enabled: bool) -> None:
+        """Split the window (source left, viewer right) or show the viewer only."""
         if enabled:
-            source = self._ensure_source()
-            if source.toPlainText() != self._markdown:
-                source.blockSignals(True)
-                source.setPlainText(self._markdown)
-                source.blockSignals(False)
+            source = self.editor.ensure()
+            # The gutter only exists now; apply the remembered preference.
+            self.editor.apply_line_numbers(
+                self.actions.line_numbers.isChecked()
+            )
+            if source.toPlainText() != self.document.markdown:
+                self.editor.set_text(self.document.markdown)
             self._widen_for_edit()
             source.show()
-            half = max(self._splitter.width() // 2, 1)
-            self._splitter.setSizes([half, half])
+            half = max(self.splitter.width() // 2, 1)
+            self.splitter.setSizes([half, half])
         else:
-            # QSplitter skips hidden widgets, so the preview takes over.
-            if self._source is not None:
-                self._source.hide()
+            # QSplitter skips hidden widgets, so the viewer takes over.
+            self.editor.set_visible(False)
             self._restore_pre_edit_geometry()
-            # Leaving edit mode exposes the preview: skip the debounce wait.
-            if self._render_timer.isActive():
-                self._render_now()
+            # Leaving edit mode exposes the viewer: skip the debounce wait.
+            if self.editor.timer.isActive():
+                self.render_now()
         self._update_edit_actions()
 
     def _widen_for_edit(self) -> None:
@@ -1055,18 +462,29 @@ class ViewerWindow(QMainWindow):
             self._pre_edit_geometry = None
 
     @Slot()
-    def _source_edited(self) -> None:
-        """Live-update the preview while the source is edited.
+    def _text_edited(self) -> None:
+        """Mirror the buffer; the viewer waits for the typing to pause.
 
-        The text is taken over immediately — saving must not lag behind — but
-        the preview waits for the typing to pause, so a keystroke no longer
-        costs a full render.
+        The text is taken over immediately - saving must not lag behind -
+        while the render is started by the editor's timer.
         """
-        if self._source is None:
-            return
-        self._markdown = self._source.toPlainText()
-        self._update_modified_state()
-        self._render_timer.start()
+        self.document.markdown = self.editor.text
+        self._show_modified()
+
+    # ------------------------------------------------------------- render
+
+    def render(self) -> None:
+        """Show the document in the viewer."""
+        self.viewer_area.set_markdown(self.document.markdown)
+
+    def render_now(self) -> None:
+        """Render at once, dropping a pending live-render update.
+
+        Used wherever a stale view would be visible: opening a file,
+        switching the backend, changing the remote-image setting.
+        """
+        self.editor.timer.stop()
+        self.render()
 
     # -------------------------------------------------------------- files
 
@@ -1078,53 +496,36 @@ class ViewerWindow(QMainWindow):
             event.ignore()
 
     def open(self, path: Path) -> bool:
+        """Show ``path``, asking about unsaved changes first."""
         reason = rejection_reason(path)
         if reason is not None:
-            print(f"heino-reader: cannot open {path}: {reason}", file=sys.stderr)
+            print(
+                f"heino-reader: cannot open {path}: {reason}", file=sys.stderr
+            )
             return False
         if not self._confirm_discard():
             return False
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError as error:
-            print(f"heino-reader: cannot read {path}: {error}", file=sys.stderr)
+        previous = self.document.path
+        if not self.document.read(path):
             return False
-        self._markdown = text
-        previous = self._path
-        # The editor may not exist yet; it picks up _markdown when created.
-        replaced = self._source is not None and self._source.toPlainText() != text
-        if replaced:
-            self._source.blockSignals(True)
-            self._source.setPlainText(text)
-            self._source.blockSignals(False)
-        if self._source is not None and (replaced or path != previous):
-            # A document must never be undoable into the one opened before it.
-            self._source.document().clearUndoRedoStacks()
-        self._saved_text = text
-        self._adopt_path(path)
-        self._update_modified_state()
-        self._render_now()
+        if self.editor.source is not None:
+            replaced = self.editor.text != self.document.markdown
+            if replaced:
+                self.editor.set_text(self.document.markdown)
+            if replaced or path != previous:
+                # A document must never be undoable into the one before it.
+                self.editor.clear_history()
+        self._attach_path()
+        self.render_now()
         return True
-
-    def _render(self) -> None:
-        self.viewer.set_markdown(self._markdown)
-
-    def _render_now(self) -> None:
-        """Render at once, dropping a pending live-preview update.
-
-        Used wherever a stale preview would be visible: opening a file,
-        switching the backend, changing the remote-image setting.
-        """
-        self._render_timer.stop()
-        self._render()
 
     @Slot(str)
     def _on_file_changed(self, path: str) -> None:
         # Many editors replace the file; ensure it stays watched.
-        if not self._watcher.files():
-            self._watcher.addPath(path)
-        if self._path is not None:
-            self.open(self._path)
+        if not self.watcher.files():
+            self.watcher.addPath(path)
+        if self.document.path is not None:
+            self.open(self.document.path)
 
     # ----------------------------------------------------------- drag drop
 

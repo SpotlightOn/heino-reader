@@ -1,6 +1,6 @@
-"""QtWebEngine-based markdown preview (opt-in, full HTML/CSS fidelity).
+"""QtWebEngine-based markdown viewer (opt-in, full HTML/CSS fidelity).
 
-This module is imported lazily: selecting the web preview is what loads
+This module is imported lazily: selecting the web renderer is what loads
 Chromium, so a Qt-rendered start never pays for it.
 """
 
@@ -20,8 +20,8 @@ from PySide6.QtWebEngineCore import (
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QWidget
 
+from ..utils import open_external
 from .render import render_html_document
-from .utils import open_external
 
 
 class MarkdownPage(QWebEnginePage):
@@ -59,8 +59,8 @@ class WebMarkdownView(QWebEngineView):
 
     QTextDocument only supports a small CSS subset (borders and padding
     work on table cells only, and block backgrounds repeat per line), so a
-    Chromium view is used for a faithful preview. The look lives in
-    ``preview.css``.
+    Chromium view is used for a faithful rendering. The look lives in
+    ``document.css``.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -68,11 +68,18 @@ class WebMarkdownView(QWebEngineView):
         self._base_dir: Path | None = None
         self._wrap_code = True
         self._profile = QWebEngineProfile(self)
-        self._image_filter = RemoteImageFilter(self)
+        self._image_filter = RemoteImageFilter(self._profile)
         self._profile.setUrlRequestInterceptor(self._image_filter)
         self._page = MarkdownPage(self._profile, self)
         self._page.setBackgroundColor(QColor("#ffffff"))
         self.setPage(self._page)
+        # Qt destroys a profile only after its pages are gone. Both were
+        # children of the view, so the profile could go first, which Qt
+        # answers with "Release of profile requested but WebEnginePage still
+        # not deleted" and a crash at shutdown. Handing the profile to the
+        # page fixes the order: the view deletes the page, the page deletes
+        # the profile.
+        self._profile.setParent(self._page)
 
         settings = self._page.settings()
         settings.setAttribute(

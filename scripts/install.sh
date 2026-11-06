@@ -5,9 +5,8 @@
 # package there, links the launcher into ~/.local/bin and installs the desktop
 # entry and icon. No root rights are needed.
 #
-# The default install is the small one: Qt's base modules only
-# (pyside6-essentials, ~240 MB installed). QtWebEngine comes with
-# pyside6-addons (~440 MB) and is only pulled in with --web.
+# The default install is the small one: Qt's base modules only. QtWebEngine is
+# a large download and is only pulled in with --web.
 #
 # Usage:
 #   scripts/install.sh              install (Qt renderer, no QtWebEngine)
@@ -28,8 +27,8 @@ usage() {
     cat >&2 <<'EOF'
 Usage: scripts/install.sh [install|--uninstall] [--web]
 
-  --web        also install QtWebEngine (pyside6-addons, ~440 MB) for the
-               optional Web Engine preview
+  --web        also install QtWebEngine (large download) for the optional Web
+               Engine renderer
   --uninstall  remove the virtualenv, launcher, desktop entry and icon
 EOF
 }
@@ -99,7 +98,7 @@ echo "  desktop:  $DATA_HOME/applications/heino-reader.desktop"
 echo "  icon:     $DATA_HOME/icons/hicolor/scalable/apps/heino-reader.svg"
 if [ -z "$EXTRA" ]; then
     echo
-    echo "Note: QtWebEngine is not installed; View -> Web Engine Preview is"
+    echo "Note: QtWebEngine is not installed; View -> Web Engine Renderer is"
     echo "      disabled. Add it later with: scripts/install.sh --web"
 fi
 

@@ -5,9 +5,8 @@
 # The launcher lands in ~/.local/bin (or $UV_TOOL_BIN_DIR); the desktop entry
 # and icon are installed alongside it.
 #
-# The default install is the small one: Qt's base modules only
-# (pyside6-essentials, ~240 MB installed). QtWebEngine comes with
-# pyside6-addons (~440 MB) and is only pulled in with --web.
+# The default install is the small one: Qt's base modules only. QtWebEngine is
+# a large download and is only pulled in with --web.
 #
 # Usage:
 #   scripts/install-uv.sh              install (Qt renderer, no QtWebEngine)
@@ -37,8 +36,8 @@ usage() {
     cat >&2 <<'EOF'
 Usage: scripts/install-uv.sh [install|--uninstall] [--web]
 
-  --web        also install QtWebEngine (pyside6-addons, ~440 MB) for the
-               optional Web Engine preview
+  --web        also install QtWebEngine (large download) for the optional Web
+               Engine renderer
   --uninstall  remove the tool, desktop entry and icon
 EOF
 }
@@ -65,7 +64,9 @@ fi
 
 if [ "$WITH_WEB" -eq 1 ]; then
     echo "Installing the Heino Reader tool from $ROOT (with QtWebEngine)"
-    uv tool install --force "$ROOT" --with "PySide6-Addons>=6.6,<6.12"
+    # The web extra adds pyside6-webengine on PySide6 6.12 and plain
+    # pyside6-addons on 6.11, so uv picks the right one.
+    uv tool install --force "$ROOT[web]"
 else
     echo "Installing the Heino Reader tool from $ROOT (without QtWebEngine)"
     uv tool install --force "$ROOT"
@@ -90,6 +91,6 @@ echo "  desktop:  $DATA_HOME/applications/heino-reader.desktop"
 echo "  icon:     $DATA_HOME/icons/hicolor/scalable/apps/heino-reader.svg"
 if [ "$WITH_WEB" -eq 0 ]; then
     echo
-    echo "Note: QtWebEngine is not installed; View -> Web Engine Preview is"
+    echo "Note: QtWebEngine is not installed; View -> Web Engine Renderer is"
     echo "      disabled. Add it later with: scripts/install-uv.sh --web"
 fi

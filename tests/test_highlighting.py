@@ -1,4 +1,4 @@
-"""Tests for the Pygments seam and the debounced live preview."""
+"""Tests for the Pygments seam and the debounced live rendering."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from HeinoReader.highlighting import highlight_body
+from HeinoReader.viewer.highlighting import highlight_body
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -55,7 +55,7 @@ def test_render_does_not_import_pygments():
     code = (
         "import sys\n"
         f"sys.path.insert(0, {str(SRC)!r})\n"
-        "import HeinoReader.render as render\n"
+        "import HeinoReader.viewer.render as render\n"
         "render.markdown_to_html('# Title\\n\\nSome *text*.\\n', qt=True)\n"
         "loaded = [name for name in sys.modules if name.split('.')[0] == 'pygments']\n"
         "print(loaded)\n"

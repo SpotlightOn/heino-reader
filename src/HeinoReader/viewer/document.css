@@ -1,9 +1,9 @@
-/* Preview theme for Heino Reader.
+/* Document theme for Heino Reader.
  *
- * Used by both preview backends: QtWebEngine applies the full CSS, while
+ * Used by both renderers: QtWebEngine applies the full CSS, while
  * the Qt text renderer supports a subset (padding/borders work on table
  * cells only, which is why code blocks and quotes are wrapped in a cell
- * by render.py). Edit this file freely to restyle the preview.
+ * by render.py). Edit this file freely to restyle the document.
  */
 
 * { box-sizing: border-box; }
@@ -13,7 +13,9 @@ html, body { margin: 0; padding: 0; }
 body {
     max-width: 800px;
     margin: 0 auto;
-    padding: 16px 16px 48px;
+    /* More air above and below than at the sides, growing with the
+       viewport height like the Qt backend's frame margins. */
+    padding: max(32px, 6vh) 16px;
     background: #ffffff;
     color: #1f2328;
     /* A generic family: every platform resolves it without extra fonts. A

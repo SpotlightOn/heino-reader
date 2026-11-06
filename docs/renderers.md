@@ -1,16 +1,15 @@
-# Two preview renderers
+# Two renderers
 
 Heino Reader can paint markdown with two different engines. Switch at runtime via
-**View → Web Engine Preview** or at startup with `--renderer qt|web`
+**View → Web Engine Renderer** or at startup with `--renderer qt|web`
 (default `qt`).
 
-|  | Qt text renderer (default) | Web Engine preview (optional) |
+|  | Qt text renderer (default) | Web Engine renderer (optional) |
 | --- | --- | --- |
 | Engine | `QTextDocument` | QtWebEngine (Chromium) |
 | Start | instant, no Chromium process | slower, starts Chromium |
 | HTML/CSS | small subset: borders and padding only on table cells, block backgrounds repeat per line | full fidelity |
 | Wide code lines | wrapped to the column by default (`View → Wrap Code`); off widens the document | wrapped by default too; off scrolls inside each code block |
-| Install size | `pyside6-essentials`, ~260 MB | plus `pyside6-addons`, ~440 MB more |
 
 ## The Qt renderer
 
@@ -21,7 +20,7 @@ backgrounds repeat per line instead of forming one panel.
 
 ### Typography
 
-`preview.css` is shared with the Web Engine backend, so its body rule keeps
+`document.css` is shared with the Web Engine backend, so its body rule keeps
 CSS pixels. For the Qt backend the body size and font family are read from that
 file and handed to `QTextDocument.setDefaultFont()` as a **point** size
 (16 px → 12 pt) — the one thing a `QTextDocument` cannot take from a stylesheet,
@@ -34,7 +33,7 @@ font chooser is planned, so a concrete family will become a user setting rather
 than something guessed here.
 
 Points matter here: Qt scales point sizes with the screen DPI, while CSS pixel
-sizes are DPI blind inside `QTextDocument`. The preview therefore looks the same
+sizes are DPI blind inside `QTextDocument`. The view therefore looks the same
 size as the rest of the desktop at 96, 144 or any other DPI, and zoom just
 multiplies the point size. Heading levels come from Qt's own HTML scale
 (about 2× / 1.5× / 1.2× of the body font), which scales along with it — no
@@ -48,9 +47,9 @@ the *font size*. `line-height: 1.55` therefore becomes a corrected percentage
 (~114 %), computed from Qt's own font metrics — the same `QFontMetricsF` and
 `QFontInfo` calls any Qt app would use, no DPI arithmetic. `qt_stylesheet()`
 rewrites every declaration that way before the stylesheet reaches
-`setDefaultStyleSheet()`, and spells the body value out on the block elements,
-which would otherwise miss it (there is no `<body>` to inherit from). Code
-blocks and headings keep the value of their own rule.
+`setDefaultStyleSheet()`, and applies the body value to `*`, because a fragment
+has no `<body>` for it to inherit from. More specific rules (headings, `pre`)
+still win, as they would in a browser.
 
 The document is touched exactly once, by `setHtml()`: the line heights arrive
 with the stylesheet, so nothing reformats the blocks afterwards and no second
@@ -66,17 +65,17 @@ The whole editor stack (source pane, syntax highlighter, line-number gutter) is
 created lazily on the first click on **Edit mode**, so the viewer itself stays
 lean.
 
-## The Web Engine preview
+## The Web Engine renderer
 
 The better but slower renderer: tables, borders and backgrounds follow the CSS
-exactly. It needs the optional [PySide6-Addons](https://pypi.org/project/PySide6-Addons/)
-package:
+exactly. It needs the optional QtWebEngine module:
 
 ```sh
 pip install "heino-reader[web]"          # or: uv tool install "heino-reader[web]"
 scripts/install.sh --web                 # for the local XDG install
 ```
 
-`pyside6-addons` costs 439 MB installed, which is why it is opt-in. Without it
+QtWebEngine is a large extra download, which is why it is opt-in. Without it
 the menu entry stays greyed out, the app falls back to the Qt renderer and says
-so on stderr — no crash, no hidden download.
+so on stderr — no crash, no hidden download. Download sizes:
+[installation](installation.md#download-size).

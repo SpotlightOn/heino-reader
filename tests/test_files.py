@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-import HeinoReader
 import HeinoReader.window
 from HeinoReader.files import is_supported_path, looks_binary, rejection_reason
+from HeinoReader.window import ViewerWindow
 
 
 @pytest.mark.parametrize(
@@ -77,7 +79,7 @@ def test_rejection_reason_rejects_directories(tmp_path):
 def window(qtbot, tmp_path):
     md = tmp_path / "notes.md"
     md.write_text("# Notes\n", encoding="utf-8")
-    window = HeinoReader.ViewerWindow(md)
+    window = ViewerWindow(md)
     qtbot.addWidget(window)
     window.show()
     from PySide6.QtWidgets import QApplication
@@ -103,9 +105,9 @@ def drop_url(window, path):
 def test_open_refuses_a_binary_file(window, tmp_path):
     png = tmp_path / "picture.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
-    before = window._markdown
+    before = window.document.markdown
     assert window.open(png) is False
-    assert window._markdown == before
+    assert window.document.markdown == before
 
 
 def test_dropping_an_image_is_rejected(window, tmp_path, monkeypatch):
@@ -115,12 +117,12 @@ def test_dropping_an_image_is_rejected(window, tmp_path, monkeypatch):
     )
     png = tmp_path / "picture.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
-    before = window._markdown
+    before = window.document.markdown
 
     event = drop_url(window, png)
 
     assert not event.isAccepted()
-    assert window._markdown == before
+    assert window.document.markdown == before
     assert warnings, "the user should be told why the drop was rejected"
 
 
@@ -129,7 +131,7 @@ def test_dropping_markdown_is_accepted(window, tmp_path):
     other.write_text("# Other\n", encoding="utf-8")
     event = drop_url(window, other)
     assert event.isAccepted()
-    assert "Other" in window._markdown
+    assert "Other" in window.document.markdown
 
 
 @pytest.mark.parametrize(
@@ -150,3 +152,29 @@ def test_drag_enter_only_accepts_text_files(window, tmp_path, name, accepted):
     )
     window.dragEnterEvent(event)
     assert event.isAccepted() is accepted
+
+
+def test_looks_binary_treats_an_unreadable_file_as_text(tmp_path):
+    """A permission error is not evidence of binary content."""
+    path = tmp_path / "locked.md"
+    path.write_text("# nope\n", encoding="utf-8")
+    path.chmod(0o000)
+    try:
+        assert looks_binary(path) is False
+    finally:
+        path.chmod(0o600)
+
+
+def test_rejection_reason_explains_a_filesystem_error(tmp_path, monkeypatch):
+    """A stat that fails mid-check must produce a reason, not a traceback."""
+    path = tmp_path / "notes.md"
+    path.write_text("# x\n", encoding="utf-8")
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+    def failing_stat(self, *args, **kwargs):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(Path, "stat", failing_stat)
+
+    assert rejection_reason(path) == "it cannot be read (permission denied)"

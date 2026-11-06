@@ -109,7 +109,7 @@ class MarkdownSourceEdit(QPlainTextEdit):
     def set_text_point_size(self, point_size: float) -> None:
         """Use the given size, keeping the monospace family and the tab stops.
 
-        The preview and the source pane should read at the same size; the
+        The viewer and the source pane should read at the same size; the
         tab stop has to follow, because it is a pixel distance derived from
         the font's advance width.
         """

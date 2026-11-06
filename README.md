@@ -34,6 +34,8 @@ notes open with a double click.
 heino-reader notes.md
 ```
 
+![Heino Reader](docs/screenshot.avif)
+
 ## Install
 
 ```sh
@@ -50,10 +52,11 @@ without touching your system Python. None of this needs root rights.
 
 - **Instant.** No Chromium in the default renderer — just Qt's text engine.
 - **Read-only first.** Nothing changes by accident; edit mode is one click away.
-- **Live reload.** Save in your editor, the preview follows.
-- **Split editing when you want it.** Source on the left, live preview on the
+- **Live reload.** Save in your editor, the view follows.
+- **Split editing when you want it.** Source on the left, live view on the
   right — like Ghostwriter, with a formatting toolbar and shortcuts.
-- **Light.** ~260 MB installed — no Electron, no bundled browser process.
+- **Light.** No Electron, no bundled browser process; the default install
+  leaves QtWebEngine out.
 - **Native desktop app.** Drag & drop, `.md` file association, links opened with
   xdg-open, toolbar icons in your system colors.
 
@@ -64,6 +67,7 @@ without touching your system Python. None of this needs root rights.
 | [Installation](docs/installation.md) | PyPI, local XDG install, web extra, uninstall, file association |
 | [Usage](docs/usage.md) | Menus, edit mode, insert dialogs, all keyboard shortcuts |
 | [Renderers](docs/renderers.md) | Qt text engine vs. Web Engine, feature by feature |
+| [Workarounds](docs/workarounds.md) | Every place the code bends around Qt's rich text limits, and why |
 | [Development](docs/development.md) | Setup, tests, project layout, naming conventions |
 
 ## License

@@ -3,7 +3,7 @@
 Pygments is a heavy import that most documents never need: a markdown file
 without code stays a plain-markdown render. It is therefore imported on first
 use instead of at module level, and the highlighted body is cached by content,
-so re-rendering an unchanged block — which the live preview does on every
+so re-rendering an unchanged block — which live rendering does on every
 keystroke — costs nothing.
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 from functools import cache, lru_cache
 from html import escape
 
-# Pygments token colors for fenced code, matched by preview.css.
+# Pygments token colors for fenced code, matched by document.css.
 _STYLE = "friendly"
 
 

@@ -87,11 +87,6 @@ class LineNumberGutter(QObject):
             self._update_geometry()
         return False
 
-    def toggle(self) -> bool:
-        """Flip the gutter and return whether it is now installed."""
-        self.uninstall() if self._installed else self.install()
-        return self._installed
-
     # ------------------------------------------------------------- width
 
     def area_width(self) -> int:

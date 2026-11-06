@@ -1,9 +1,9 @@
-"""QTextEdit-based markdown preview (the default backend).
+"""QTextEdit-based markdown viewer (the default backend).
 
 Qt's rich text engine supports only a small HTML/CSS subset: borders and
 padding apply to table cells only, and block backgrounds repeat per line.
 This backend is therefore a faster, lighter default; the WebEngine backend
-in ``webview.py`` can be switched on for faithful rendering.
+in ``web.py`` can be switched on for faithful rendering.
 """
 
 from __future__ import annotations
@@ -21,45 +21,54 @@ from PySide6.QtGui import (
     QTextCursor,
     QTextDocument,
     QTextImageFormat,
+    QTextLength,
+    QTextTable,
 )
 from PySide6.QtWidgets import QTextEdit, QWidget
 
+from ..layout import content_layout, vertical_margins
+from ..utils import open_external
 from .images import RemoteImageLoader, is_remote, placeholder_image
-from .layout import content_layout
 from .render import (
     _resolve_relative_paths,
+    cell_border_width,
     markdown_to_html,
-    preview_body_point_size,
-    preview_font_families,
     qt_stylesheet,
+    viewer_body_point_size,
+    viewer_font_families,
 )
-from .utils import open_external
 
 
-def preview_font(scale: float = 1.0) -> QFont:
-    """The document font for the preview at the given zoom level.
+def viewer_font(scale: float = 1.0) -> QFont:
+    """The document font for the viewer at the given zoom level.
 
     A point size, not a pixel size: Qt scales points with the screen DPI, so
-    the preview follows the desktop like every other Qt widget. Heading and
+    the view follows the desktop like every other Qt widget. Heading and
     inline sizes are left to Qt's own HTML scale, which is relative to this
     font and therefore scales with it.
     """
     font = QFont()
-    families = preview_font_families()
+    families = viewer_font_families()
     if families:
         font.setFamilies(families)
-    font.setPointSizeF(preview_body_point_size() * scale)
+    font.setPointSizeF(viewer_body_point_size() * scale)
     return font
 
 
 class QtMarkdownView(QTextEdit):
-    """Markdown preview rendered by Qt's rich-text engine."""
+    """Markdown viewer rendered by Qt's rich-text engine."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setReadOnly(True)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
+        # The column width is derived from the viewport width. A vertical
+        # scrollbar that appears later would narrow the viewport without a
+        # resize event, leaving the document laid out for the wider viewport —
+        # which Qt answers with a horizontal scrollbar. Keeping the bar always
+        # shown keeps the viewport width constant.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._base_dir: Path | None = None
         self._press_pos: QPoint | None = None
         self._last_open: tuple[str, float] | None = None
@@ -71,14 +80,15 @@ class QtMarkdownView(QTextEdit):
         self._remote = RemoteImageLoader(self)
         self._remote.loaded.connect(self._on_remote_loaded)
         self._remote.failed.connect(self._on_remote_failed)
-        # preview.css styles colors, spacing and structure. Its typography
+        # document.css styles colors, spacing and structure. Its typography
         # cannot come from a body rule here: setDefaultStyleSheet() never
         # matches one, because setHtml() parses a fragment without <body>.
         # The base font is therefore the document font, the line heights are
         # re-referenced to Qt's own metrics by qt_stylesheet(), and the
         # relative heading sizes are Qt's own HTML scale.
-        self.setFont(preview_font(self._scale))
-        self.document().setDefaultFont(preview_font(self._scale))
+        font = viewer_font(self._scale)
+        self.setFont(font)
+        self.document().setDefaultFont(font)
         self._apply_stylesheet()
 
     # --------------------------------------------------------------- API
@@ -104,6 +114,7 @@ class QtMarkdownView(QTextEdit):
         self.setHtml(html)
         self._apply_content_width()
         self._apply_remote_images()
+        self._fit_tables()
         self._fit_images()
 
     def _apply_stylesheet(self) -> None:
@@ -125,7 +136,10 @@ class QtMarkdownView(QTextEdit):
 
         The stylesheet only affects the next ``setHtml()``, so the caller
         re-renders the document (``ViewerWindow._render_now``) afterwards.
+        Setting the value it already has costs nothing.
         """
+        if enabled == self._wrap_code:
+            return
         self._wrap_code = enabled
         self._apply_stylesheet()
 
@@ -133,8 +147,10 @@ class QtMarkdownView(QTextEdit):
         self._remote_enabled = enabled
 
     def set_zoom(self, scale: float) -> None:
+        if scale == self._scale:
+            return
         self._scale = scale
-        font = preview_font(scale)
+        font = viewer_font(scale)
         self.setFont(font)
         self.document().setDefaultFont(font)
         self._apply_stylesheet()
@@ -145,21 +161,31 @@ class QtMarkdownView(QTextEdit):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._apply_content_width()
+        self._fit_tables()
         self._fit_images()
 
     def _apply_content_width(self) -> int:
-        """Centre the text column at MAX_CONTENT_WIDTH on wide windows."""
+        """Centre the text column and keep room above and below it.
+
+        Runs on every resize, so the top and bottom margin follow the window
+        height instead of being fixed to the side margin.
+        """
         content, margin = content_layout(self.viewport().width())
         if content <= 0:
             return 0
+        top, bottom = vertical_margins(self.viewport().height())
         frame = self.document().rootFrame()
         fmt = frame.frameFormat()
         if (
             round(fmt.leftMargin()) != margin
             or round(fmt.rightMargin()) != margin
+            or round(fmt.topMargin()) != top
+            or round(fmt.bottomMargin()) != bottom
         ):
             fmt.setLeftMargin(margin)
             fmt.setRightMargin(margin)
+            fmt.setTopMargin(top)
+            fmt.setBottomMargin(bottom)
             frame.setFrameFormat(fmt)
         return content
 
@@ -169,18 +195,9 @@ class QtMarkdownView(QTextEdit):
         """Attach cached, placeholder or in-flight resources for remote images."""
         if not self._has_images:
             return
-        document = self.document()
-        block = document.begin()
-        while block.isValid():
-            iterator = block.begin()
-            while not iterator.atEnd():
-                fragment = iterator.fragment()
-                if fragment.isValid() and fragment.charFormat().isImageFormat():
-                    url = fragment.charFormat().toImageFormat().name()
-                    if is_remote(url):
-                        self._apply_remote_resource(url)
-                iterator += 1
-            block = block.next()
+        for _, _, image in self._image_fragments():
+            if is_remote(image.name()):
+                self._apply_remote_resource(image.name())
 
     def _apply_remote_resource(self, url: str) -> None:
         document = self.document()
@@ -214,9 +231,69 @@ class QtMarkdownView(QTextEdit):
 
     # ------------------------------------------------------------- images
 
+    def _image_fragments(self) -> list[tuple[int, int, QTextImageFormat]]:
+        """Every image fragment as (position, length, format).
+
+        A snapshot: both callers change the document while they walk it.
+        """
+        found = []
+        block = self.document().begin()
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if fragment.isValid() and fragment.charFormat().isImageFormat():
+                    found.append(
+                        (
+                            fragment.position(),
+                            fragment.length(),
+                            fragment.charFormat().toImageFormat(),
+                        )
+                    )
+                iterator += 1
+            block = block.next()
+        return found
+
     def _refit(self) -> None:
         self._fit_width = -1
+        self._fit_tables()
         self._fit_images()
+
+    def _column_tables(self):
+        """Tables that take their width from their content.
+
+        Code blocks and quotes are tables too, but they are declared as a
+        percentage of the column and already fit.
+        """
+        for frame in self.document().rootFrame().childFrames():
+            if isinstance(frame, QTextTable):
+                width = frame.format().width()
+                if width.type() != QTextLength.Type.PercentageLength:
+                    yield frame
+
+    def _fit_tables(self) -> None:
+        """Give markdown tables the exact width of the text column.
+
+        Qt lays a table out at the width of its cell area and draws the outer
+        cell borders outside it, so a table that fills the column ends up a
+        few pixels wider than the viewport, which Qt answers with a horizontal
+        scrollbar under the text. Reserving the border width keeps it inside.
+        Tables that cannot shrink below their minimum stay wider.
+        """
+        content, _ = content_layout(self.viewport().width())
+        if content <= 0:
+            return
+        width = max(0.0, content - 2 * cell_border_width())
+        for table in self._column_tables():
+            fmt = table.format()
+            current = fmt.width()
+            if (
+                current.type() == QTextLength.Type.FixedLength
+                and round(current.rawValue()) == round(width)
+            ):
+                continue
+            fmt.setWidth(QTextLength(QTextLength.Type.FixedLength, width))
+            table.setFormat(fmt)
 
     def _fit_images(self) -> None:
         """Scale oversized images down to the text column width."""
@@ -230,24 +307,15 @@ class QtMarkdownView(QTextEdit):
 
         scroll = self.verticalScrollBar().value()
         changed = False
-        block = document.begin()
-        while block.isValid():
-            iterator = block.begin()
-            while not iterator.atEnd():
-                fragment = iterator.fragment()
-                if fragment.isValid() and fragment.charFormat().isImageFormat():
-                    image = fragment.charFormat().toImageFormat()
-                    if self._fit_image(document, image, content):
-                        cursor = QTextCursor(document)
-                        cursor.setPosition(fragment.position())
-                        cursor.setPosition(
-                            fragment.position() + fragment.length(),
-                            QTextCursor.MoveMode.KeepAnchor,
-                        )
-                        cursor.setCharFormat(image)
-                        changed = True
-                iterator += 1
-            block = block.next()
+        for position, length, image in self._image_fragments():
+            if self._fit_image(document, image, content):
+                cursor = QTextCursor(document)
+                cursor.setPosition(position)
+                cursor.setPosition(
+                    position + length, QTextCursor.MoveMode.KeepAnchor
+                )
+                cursor.setCharFormat(image)
+                changed = True
         if changed:
             self.verticalScrollBar().setValue(scroll)
 

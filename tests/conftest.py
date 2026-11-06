@@ -18,6 +18,26 @@ def isolated_settings(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def destroy_windows():
+    """Delete test windows before pytest-qt closes them.
+
+    pytest-qt calls ``close()`` and ``deleteLater()``. For a window holding a
+    WebEngine view, closing the Qt Quick window before the Chromium page is
+    gone crashes inside Qt; deleting the window while the application is
+    still running avoids that sequence.
+    """
+    yield
+    import shiboken6
+    from PySide6.QtWidgets import QApplication
+
+    from HeinoReader.window import ViewerWindow
+
+    for widget in QApplication.topLevelWidgets():
+        if isinstance(widget, ViewerWindow) and shiboken6.isValid(widget):
+            shiboken6.delete(widget)
+
+
+@pytest.fixture(autouse=True)
 def no_modal_prompts(monkeypatch):
     """Never let a window-close teardown block on the unsaved-changes dialog.
 
