@@ -1,4 +1,4 @@
-# PySide6 6.12.0: `none_dealloc: deallocating None` after many `QSyntaxHighlighter.setFormat()` calls
+# PySide6 6.12.0 on Python ≤ 3.11: `none_dealloc: deallocating None` after many `QSyntaxHighlighter.setFormat()` calls
 
 ## Summary
 
@@ -16,6 +16,11 @@ The crash is nondeterministic in *when* it happens (during the event loop or
 during interpreter shutdown) but reproduces reliably for the steps below.
 PySide6 **6.11.2** and **6.8.3** are unaffected with identical code.
 
+The interpreter version decides: **6.12.0 is clean on Python 3.12 and newer**
+and aborts on 3.10/3.11. `None` and `True` have been immortal since Python 3.12
+(PEP 683); on older interpreters an over-decrement frees them and the next
+deallocation aborts. See [Root cause](#root-cause).
+
 No painting, line numbers or third-party code are involved — a bare
 `QPlainTextEdit` plus `QSyntaxHighlighter` is enough.
 
@@ -23,7 +28,7 @@ No painting, line numbers or third-party code are involved — a bare
 
 - PySide6 **6.12.0** (crash) / 6.11.2, 6.8.3 (OK)
 - Qt 6.12.0
-- Python 3.11.16 (CPython, standard build)
+- Python 3.11.16 (crash), 3.12.x and 3.14.7 (no crash, same PySide6)
 - Linux 7.2.3 x86_64 (Manjaro), glibc 2.44
 - Qt platform plugin: `offscreen` and `xcb` both reproduce
 
@@ -111,47 +116,54 @@ Measured on 6.12.0 by varying one factor at a time:
 | `QTextEdit` instead of `QPlainTextEdit` | crash |
 | widget never shown (no painting at all) | crash |
 | 20-line document instead of 1500 | no crash |
+| 43-line markdown document, Python 3.11 | crash |
+| same, Python 3.12 / 3.14 | no crash |
+| Python 3.14, 4400-line document in an editor | no crash |
 | 6.11.2 / 6.8.3, same script | no crash |
 
 Conclusions:
 
 - Triggered by `QSyntaxHighlighter.setFormat(int, int, QTextCharFormat)`
   being called many times, i.e. once per document block.
+- Limited to Python 3.10/3.11. The same wheel on 3.12+ survives the identical
+  script, so it is neither a Qt nor a platform problem.
 - Independent of painting: the crash also occurs when the widget is never
   shown, so `QPainter`/line-number gutters are not involved.
 - Independent of the concrete widget class.
 - The error surfaces at object deallocation (`tp_dealloc` with `ob_type ==
-  NULL`), which points at a refcount/ownership error for value-type
-  wrappers rather than a logic error in user code.
+  NULL`) after an over-decrement freed an object that must never be freed.
+
+## Root cause
+
+Upstream reports the same failure signature for a different API:
+**PYSIDE-3474** ("6.12.0: Signal.emit() decrements the refcount of Py_True:
+Python 3.10/3.11 abort after a few hundred emissions", resolved, fix version
+**6.12.1**) and **PYSIDE-3477** (same for `bool_dealloc`, closed as duplicate).
+Both describe PySide6 6.12.0 over-decrementing the refcount of a borrowed
+immortal object.
+
+That matches every observation here: the abort only happens on interpreters
+where `None` is not immortal, and the value that dies is a temporary wrapper
+the caller never owned — `setFormat()` takes `const QTextCharFormat &`, so the
+Python wrapper is only needed for the duration of the call.
+
+Whether 6.12.1 also clears this reproducer has to be measured, not assumed:
+6.12.1 is not on PyPI yet.
 
 ## Workaround
 
-Pin to a release below 6.12 until this is fixed:
+Run on Python 3.12 or newer, or pin to a release below 6.12:
 
 ```
-PySide6>=6.6,<6.12
+PySide6>=6.6,<6.12   # Python 3.10/3.11
+PySide6>=6.12,<6.13  # Python 3.12+
 ```
 
-## Analysis hints
+Heino Reader does exactly that in `pyproject.toml`. Once 6.12.1 is out, drop
+the marker.
 
-- Prime suspect for a bisect is commit
-  `8d33ddd7a4868365295fd0501e84e2b6435b70d6`
-  ("libshiboken: Avoid allocating an array for the C++ instance pointers",
-  2026-09-26, released in 6.12.0). It reworked `SbkObjectPrivate` storage
-  into `SbkObjectPrivate1` / `SbkObjectMultiInheritancePrivate`, added the
-  `is_multicpp` bit, and rewrote `deallocData()`, `destroy()`,
-  `cppPointer(s)` and `setCppPointer()` — i.e. exactly the wrapper
-  lifetime/deallocation paths where a `none_dealloc` would surface.
-- The `<value-type name="QTextCharFormat">` entry in
-  `sources/pyside6/PySide6/QtGui/typesystem_gui_common.xml` has no special
-  modifications, so the regression is unlikely to be in the type system
-  description.
-- `setFormat()` takes `const QTextCharFormat &`, so the Python wrapper is
-  only needed for the duration of the call. An over-decref of that
-  temporary wrapper is consistent with the observed `none_dealloc`.
-- Once the offending commit is known, running the reproducer against a
-  build with `PYTHONMALLOC=debug` and `gc.set_debug()` should make the
-  affected wrapper visible.
+## Self-check
 
-A self-check script lives at `scripts/check_pyside6_crash.py` in the
-reporting project; it exits 0 when the crash is gone.
+A reproducer lives at `scripts/check_pyside6_crash.py` in the reporting
+project; it exits 0 when the crash is gone. Run it with a Python 3.10/3.11
+interpreter — on 3.12+ it never fires.

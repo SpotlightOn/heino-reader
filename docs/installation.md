@@ -28,29 +28,36 @@ theme.
 With **uv** (no manual virtualenv):
 
 ```sh
-scripts/install-uv.sh              # Qt renderer only, ~260 MB installed
-scripts/install-uv.sh --web        # plus QtWebEngine, ~700 MB installed
+scripts/install-uv.sh              # Qt renderer only
+scripts/install-uv.sh --web        # plus the Web Engine renderer
 ```
 
 Without uv (plain virtualenv):
 
 ```sh
-scripts/install.sh                 # Qt renderer only, ~260 MB installed
-scripts/install.sh --web           # plus QtWebEngine, ~700 MB installed
+scripts/install.sh                 # Qt renderer only
+scripts/install.sh --web           # plus the Web Engine renderer
 ```
 
 Both scripts accept `--uninstall`.
 
-## Why the default install is small
+## Download size
+
+| Install | Download |
+| --- | --- |
+| Qt renderer only | 80 MB |
+| with the Web Engine renderer (`[web]`, `--web`) | 250 MB |
 
 The app itself only needs Qt's base modules, all of which ship in
 `pyside6-essentials`: `QtCore`, `QtGui`, `QtWidgets`, `QtSvg`, `QtNetwork`.
+QtWebEngine adds 168 MB on top, because it is a full Chromium build.
 
-The Web Engine renderer needs `pyside6-addons`, which is 439 MB installed —
-195 MB of that is `libQt6WebEngineCore.so` alone. So `--web` stays an explicit
-choice. Without it, **View → Web Engine Renderer** is greyed out and the app
-falls back to the Qt renderer with a note on stderr: no crash, no hidden
-download.
+That is why the Web Engine renderer stays an explicit choice. Without it,
+**View → Web Engine Renderer** is greyed out and the app falls back to the Qt
+renderer with a note on stderr: no crash, no hidden download.
+
+Which wheel QtWebEngine ships in, and why that depends on the interpreter, is
+in [development](development.md#pyside6-versions).
 
 ## Open `.md` files from your file manager
 

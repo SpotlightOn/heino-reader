@@ -21,7 +21,7 @@ RENDERERS = (RENDERER_WEB, RENDERER_QT)
 
 
 def web_engine_available() -> bool:
-    """True when pyside6-addons (QtWebEngine) is installed.
+    """True when QtWebEngine (the optional web extra) is installed.
 
     Uses a spec lookup instead of an import, so checking never loads the
     Chromium libraries.

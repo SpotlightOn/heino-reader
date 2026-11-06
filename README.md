@@ -55,7 +55,8 @@ without touching your system Python. None of this needs root rights.
 - **Live reload.** Save in your editor, the view follows.
 - **Split editing when you want it.** Source on the left, live view on the
   right — like Ghostwriter, with a formatting toolbar and shortcuts.
-- **Light.** ~260 MB installed — no Electron, no bundled browser process.
+- **Light.** No Electron, no bundled browser process; the default install
+  leaves QtWebEngine out.
 - **Native desktop app.** Drag & drop, `.md` file association, links opened with
   xdg-open, toolbar icons in your system colors.
 

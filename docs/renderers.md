@@ -10,7 +10,6 @@ Heino Reader can paint markdown with two different engines. Switch at runtime vi
 | Start | instant, no Chromium process | slower, starts Chromium |
 | HTML/CSS | small subset: borders and padding only on table cells, block backgrounds repeat per line | full fidelity |
 | Wide code lines | wrapped to the column by default (`View → Wrap Code`); off widens the document | wrapped by default too; off scrolls inside each code block |
-| Install size | `pyside6-essentials`, ~260 MB | plus `pyside6-addons`, ~440 MB more |
 
 ## The Qt renderer
 
@@ -69,14 +68,14 @@ lean.
 ## The Web Engine renderer
 
 The better but slower renderer: tables, borders and backgrounds follow the CSS
-exactly. It needs the optional [PySide6-Addons](https://pypi.org/project/PySide6-Addons/)
-package:
+exactly. It needs the optional QtWebEngine module:
 
 ```sh
 pip install "heino-reader[web]"          # or: uv tool install "heino-reader[web]"
 scripts/install.sh --web                 # for the local XDG install
 ```
 
-`pyside6-addons` costs 439 MB installed, which is why it is opt-in. Without it
+QtWebEngine is a large extra download, which is why it is opt-in. Without it
 the menu entry stays greyed out, the app falls back to the Qt renderer and says
-so on stderr — no crash, no hidden download.
+so on stderr — no crash, no hidden download. Download sizes:
+[installation](installation.md#download-size).

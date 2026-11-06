@@ -8,6 +8,11 @@
   text column.
 - Viewer: the zoom level is remembered across restarts.
 
+### Changed
+
+- PySide6 6.12 on Python 3.12 and newer; 3.10/3.11 stay on 6.11.3 until 6.12.1
+  is released (PYSIDE-3474).
+
 ### Fixed
 
 - Viewer: the zoom applies to both renderers, so switching back no longer

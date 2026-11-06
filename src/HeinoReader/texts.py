@@ -28,9 +28,9 @@ ABOUT_TEXT = (
     "<p>A fast document viewer for markdown files, built with PySide6.</p>"
     "<p>An homage to Heino: dark sunglasses on, no fuss, just the text.</p>"
     "<p>Optional: the Web Engine renderer (View menu) renders with QtWebEngine "
-    "for full CSS fidelity. It is the better but slower renderer and needs "
-    'PySide6-Addons (<a href="https://pypi.org/project/PySide6-Addons/">'
-    "pypi.org/project/PySide6-Addons</a>).</p>"
+    "for full CSS fidelity. It is the better but slower renderer and needs the "
+    "optional <code>web</code> extra: "
+    '<code>pip install "heino-reader[web]"</code>.</p>'
     "<p>Toolbar icons: Material Symbols Outlined (Apache License 2.0).</p>"
     "<p>License: MIT. Copyright (c) 2026 SpotlightOn.</p>"
 )
@@ -40,8 +40,7 @@ WEB_EXTRA_HINT = (
     "tables, borders and backgrounds follow the CSS exactly. It is more "
     "faithful than the default Qt text renderer, but slower to start and a "
     "much bigger download.\n\n"
-    "It needs the optional PySide6-Addons package:\n"
-    "https://pypi.org/project/PySide6-Addons/\n\n"
+    "It needs the optional QtWebEngine module, which the web extra installs:\n\n"
     '    pip install "heino-reader[web]"\n\n'
     "(or run scripts/install.sh --web)"
 )
@@ -65,6 +64,5 @@ Drop a markdown file here, or start Heino Reader with a file path:
 - **Remote images**: View -> Load Remote Images (off sends no requests)
 - **Full CSS fidelity**: View -> Web Engine Renderer. This is the better but
   slower renderer: it draws with QtWebEngine instead of Qt's text engine and
-  needs the optional PySide6-Addons package
-  (https://pypi.org/project/PySide6-Addons/, `pip install "heino-reader[web]"`)
+  needs the optional QtWebEngine module (`pip install "heino-reader[web]"`)
 """

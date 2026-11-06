@@ -359,7 +359,7 @@ class ViewerWindow(QMainWindow):
         if kind not in RENDERERS or kind == self.viewer_area.kind:
             return
         if not self.viewer_area.switch(kind):
-            # pyside6-addons is missing: keep the current backend and
+            # QtWebEngine is missing: keep the current backend and
             # explain instead of dying on a lazy import.
             QMessageBox.information(
                 self, "Web Engine Renderer unavailable", WEB_EXTRA_HINT

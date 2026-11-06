@@ -122,7 +122,7 @@ def test_web_engine_availability_probe_reports_the_installed_extra():
 
 
 def test_missing_web_engine_falls_back_to_qt(qtbot, doc, monkeypatch):
-    """Without pyside6-addons the app must start, not crash."""
+    """Without QtWebEngine the app must start, not crash."""
     monkeypatch.setattr(HeinoReader.viewer, "web_engine_available", lambda: False)
     window = make_window(qtbot, doc, RENDERER_WEB)
 
